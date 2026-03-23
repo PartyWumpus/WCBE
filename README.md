@@ -3,13 +3,19 @@
 A fast 64 bit befunge93 IDE with breakpoint support. Inspired largely by [BefunExec](https://github.com/Mikescher/BefunExec). Can run [in the web](https://partywumpus.github.io/befunge-editor/) or locally.
 I estimate a speed of about 30MHz max on my CPU (with the position history turned off, it lowers to 25MHz with it on). It likely runs slower in the web, but is still fast.
 
-https://github.com/user-attachments/assets/43f07a05-3276-41d9-9f64-e17970626852
+https://github.com/user-attachments/assets/1dea6b09-69a3-4802-8f5a-d125a5439d34
 
-## Running locally
+## Running
+
+### Web
+
+Go [to this site](https://partywumpus.github.io/befunge-editor/).
+
+### Local
 
 If you have nix, you can run `nix develop` to get all depencencies, otherwise you should take a look inside flake.nix and figure out how to get the deps you need.
 
-To run: `cargo run --release`
+Then run: `cargo run --release`
 
 ## Features
 
