@@ -1,5 +1,5 @@
 use coarsetime::{Duration, Instant};
-use egui::ahash::HashMap;
+use egui::ahash::{HashMap, HashSet};
 use egui::containers::menu::SubMenuButton;
 use egui::emath::TSTransform;
 use egui::scroll_area::ScrollBarVisibility;
@@ -162,6 +162,7 @@ enum Mode {
         follow: bool,
         speed: u8,
         error_state: Option<&'static str>,
+        watch_list: HashSet<Position>,
     },
 }
 
@@ -487,6 +488,7 @@ impl Mode {
                     follow: false,
                     speed: 5,
                     error_state: None,
+                    watch_list: HashSet::default(),
                 }
             }
             Mode::Playing {
@@ -879,6 +881,7 @@ impl eframe::App for App {
                     speed,
                     error_state,
                     snapshot,
+                    watch_list,
                     ..
                 } => {
                     ui.horizontal(|ui| {
@@ -948,6 +951,20 @@ impl eframe::App for App {
 
                         ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
                     });
+
+                    if !watch_list.is_empty() {
+                        ui.horizontal(|ui| {
+                            for x in watch_list.iter() {
+                                ui.group(|ui| {
+                                    ui.add(egui::Label::new(
+                                        RichText::new(format!("({:03}, {:03})", x.0, x.1))
+                                            .text_style(TextStyle::Monospace),
+                                    ));
+                                    ui.label(format!("{}", bf_state.get(*x)));
+                                });
+                            }
+                        });
+                    }
 
                     if self.settings.display_debug_info {
                         ui.separator();
@@ -1752,7 +1769,7 @@ impl App {
                     .show(|ui| {
                         ui.label(format!("Pos: {}, {}", popup_pos.0, popup_pos.1));
                         match &mut self.mode {
-                            Mode::Playing { bf_state, .. } => {
+                            Mode::Playing { bf_state, watch_list, .. } => {
                                 Self::dual_char_and_numeric_input(
                                     ui,
                                     bf_state.get(popup_pos),
@@ -1760,6 +1777,7 @@ impl App {
                                 );
 
                                 let mut breakpoint = bf_state.breakpoints().contains(&popup_pos);
+                                let mut watched = watch_list.contains(&popup_pos);
 
                                 if ui.memory(|mem| mem.focused().is_none()) {
                                     ui.input_mut(|e| {
@@ -1769,9 +1787,20 @@ impl App {
                                             } else {
                                                 bf_state.breakpoints().insert(popup_pos);
                                             }
+                                            breakpoint = !breakpoint;
+                                        }
+
+                                        if e.consume_key(Modifiers::NONE, egui::Key::W) {
+                                            if watched {
+                                                watch_list.remove(&popup_pos);
+                                            } else {
+                                                watch_list.insert(popup_pos);
+                                            }
+                                            watched = !watched;
                                         }
                                     });
                                 }
+
                                 if checkbox_with_underline(ui, &mut breakpoint, "Breakpoint")
                                     .clicked()
                                 {
@@ -1779,6 +1808,16 @@ impl App {
                                         bf_state.breakpoints().insert(popup_pos);
                                     } else {
                                         bf_state.breakpoints().remove(&popup_pos);
+                                    }
+                                };
+
+                                if checkbox_with_underline(ui, &mut watched, "Watched")
+                                    .clicked()
+                                {
+                                    if watched {
+                                        watch_list.remove(&popup_pos);
+                                    } else {
+                                        watch_list.insert(popup_pos);
                                     }
                                 };
                             }
