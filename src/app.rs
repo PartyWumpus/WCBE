@@ -735,30 +735,30 @@ impl eframe::App for App {
         eframe::set_value(storage, eframe::APP_KEY, &self.settings);
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         puffin::profile_function!();
 
         macro_rules! shortcut {
             ($icon:expr) => {
-                $icon.format(&SYMBOLS, ctx.os().is_mac())
+                $icon.format(&SYMBOLS, ui.os().is_mac())
             };
         }
 
         if !cfg!(target_arch = "wasm32") {
             puffin::GlobalProfiler::lock().new_frame();
-            puffin_egui::show_viewport_if_enabled(ctx);
+            puffin_egui::show_viewport_if_enabled(ui);
         }
 
-        self.char_renderer.update(ctx);
+        self.char_renderer.update(ui);
 
         if let Mode::Playing { running, speed, .. } = self.mode
             && running
         {
             self.mode.step_befunge(&self.settings);
             if speed == 20 {
-                ctx.request_repaint_after(std::time::Duration::from_millis(0));
+                ui.request_repaint_after(std::time::Duration::from_millis(0));
             } else {
-                ctx.request_repaint_after(std::time::Duration::from_millis((1000.0 / 33.0) as u64));
+                ui.request_repaint_after(std::time::Duration::from_millis((1000.0 / 33.0) as u64));
             }
         }
 
@@ -782,11 +782,11 @@ impl eframe::App for App {
             }
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            self.menu_bar(ui, ctx);
+        egui::TopBottomPanel::top("top_panel").show(ui, |ui| {
+            self.menu_bar(ui);
         });
 
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+        egui::TopBottomPanel::bottom("bottom_panel").show(ui, |ui| {
             puffin::profile_scope!("bottom panel");
             egui::MenuBar::new().ui(ui, |ui| {
                 // prob should figure out a better way of doing this instead of hardcoding 600
@@ -865,11 +865,11 @@ impl eframe::App for App {
         egui::SidePanel::left("left_panel")
             .resizable(false)
             .exact_width(150.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.info_panel(ui);
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             puffin::profile_scope!("central panel");
 
             puffin::profile_scope!("control bar");
@@ -1048,7 +1048,7 @@ impl eframe::App for App {
                     ui.set_min_height(100.0);
 
                     self.befunge_scene(ui);
-                    if self.open_modal.is_none() && ctx.memory(|mem| mem.focused().is_none()) {
+                    if self.open_modal.is_none() && ui.memory(|mem| mem.focused().is_none()) {
                         self.befunge_input(ui);
                     }
                 });
@@ -1736,7 +1736,6 @@ impl App {
                 if let Some(popup_pos) = self.popup_pos {
                     puffin::profile_scope!("popup");
                     let transform = ui
-                        .ctx()
                         .layer_transform_to_global(ui.layer_id())
                         .unwrap_or(TSTransform::IDENTITY);
 
@@ -1815,9 +1814,9 @@ impl App {
                                     .clicked()
                                 {
                                     if watched {
-                                        watch_list.remove(&popup_pos);
-                                    } else {
                                         watch_list.insert(popup_pos);
+                                    } else {
+                                        watch_list.remove(&popup_pos);
                                     }
                                 };
                             }
@@ -1892,9 +1891,10 @@ impl App {
         };
     }
 
-    fn menu_bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn menu_bar(&mut self, ui: &mut egui::Ui) {
         puffin::profile_function!();
 
+        let ctx = ui.ctx().clone();
         macro_rules! shortcut {
             ($icon:expr) => {
                 $icon.format(&SYMBOLS, ctx.os().is_mac())
@@ -2034,7 +2034,7 @@ impl App {
                 if !is_web {
                     ui.separator();
                     if ui.add(egui::Button::new("Quit").right_text("❌")).clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        ui.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 }
             });
