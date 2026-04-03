@@ -2100,7 +2100,7 @@ impl App {
                 );
 
                 let settings_button =
-                    egui::Button::new("Advanced settings").right_text(SubMenuButton::RIGHT_ARROW);
+                    egui::Button::new("Advanced settings");
 
                 if ui.add(settings_button).clicked() {
                     self.open_modal = Some(ModalState::Settings);
