@@ -1,6 +1,5 @@
 use coarsetime::{Duration, Instant};
 use egui::ahash::{HashMap, HashSet};
-use egui::containers::menu::SubMenuButton;
 use egui::emath::TSTransform;
 use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
@@ -185,6 +184,7 @@ pub struct Settings {
     pub invalid_operation_behaviour: InvalidOperationBehaviour,
     pub befunge_version: BefungeVersionDiscriminants,
     pub non_blocking_input: bool,
+    pub display_befunge_tooltips: bool,
 }
 
 impl Default for Settings {
@@ -200,6 +200,7 @@ impl Default for Settings {
             invalid_operation_behaviour: InvalidOperationBehaviour::Halt,
             befunge_version: BefungeVersionDiscriminants::Befunge93,
             non_blocking_input: false,
+            display_befunge_tooltips: true,
         }
     }
 }
@@ -385,6 +386,7 @@ pub struct App {
     popup_pos: Option<(i64, i64)>,
     char_renderer: CharRenderer,
     file: Option<File>,
+    befunge_tooltip_open: bool,
 }
 
 fn poss(pos: (f32, f32)) -> Pos2 {
@@ -718,6 +720,7 @@ impl App {
             ),
             char_renderer: CharRenderer::empty(),
             file: None,
+            befunge_tooltip_open: false,
         }
     }
 }
@@ -947,7 +950,9 @@ impl eframe::App for App {
                             *bf_state.stdin() = snapshot.1.clone();
                         };
 
-                        checkbox_with_underline(ui, follow, "Follow");
+                        checkbox_with_underline(ui, follow, "Follow").on_hover_text(
+                            "Makes the camera follow the instruction pointer automatically",
+                        );
 
                         ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
                     });
@@ -1853,6 +1858,76 @@ impl App {
                         self.popup_pos = None;
                     }
                 }
+
+                let cursor_op = match &self.mode {
+                    Mode::Editing { fungespace, .. } => fungespace.get(self.cursor_pos),
+                    Mode::Playing { bf_state, .. } => bf_state.get(self.cursor_pos)
+                } as u8;
+                if self.befunge_tooltip_open && self.popup_pos.is_none() && cursor_op != b' ' {
+                    puffin::profile_scope!("tooltip");
+                    let transform = ui
+                        .layer_transform_to_global(ui.layer_id())
+                        .unwrap_or(TSTransform::IDENTITY);
+
+                    egui::Popup::new(
+                        Id::new("befunge tooltip"),
+                        ui.ctx().clone(),
+                        transform.mul_pos(poss((
+                            (self.cursor_pos.0 - self.scene_offset.0) as f32 + 0.75,
+                            (self.cursor_pos.1 - self.scene_offset.1) as f32 + 0.75,
+                        ))),
+                        LayerId::background(),
+                    ).show(|ui| {
+
+                        let description = match cursor_op {
+                            b'0'..=b'9' => "Loads a number onto the stack",
+                            b'+' => "Pops a then b, then pushes b + a",
+                            b'-' => "Pops a then b, then pushes b - a",
+                            b'*' => "Pops a then b, then pushes b * a",
+                            b'/' => "Pops a then b, then pushes b / a (Integer division)",
+                            b'%' => "Pops a then b, then pushes b % a (Remainder)",
+                            b'`' => "Pops a then b, then pushes b > a (1 if true, 0 if false)",
+
+                            b'"' => "Enters 'string mode', all following characters just push their unicode codepoint value until the next \"",
+                            b'\\' => "Swaps the top 2 values on the stack",
+                            b'!' => "Pops a value. If it is 0, 1 is pushed. Otherwise 0 is pushed. (Logical not)",
+                            b':' => "Duplicates the top value on the stack",
+                            b'$' => "Pops a, then discards it",
+
+                            b'>' | b'<' | b'^' | b'v' => "Changes instruction pointer direction",
+                            b'#' => "Skips the next operation",
+                            b'?' => "Points the instruction pointer in a random direction",
+                            b'_' => "Pops a value. If it is 0, point the instruction pointer right. Otherwise go left.",
+                            b'|' => "Pops a value. If it is 0, point the instruction pointer down. Otherwise go up.",
+
+                            b'p' => "Pops x, y and val. Places val in the position (x,y) in the program's space",
+                            b'g' => "Pops x and y. Pushes the value of the position (x,y) in the program's space. 0 if out of bounds",
+
+                            b'&' => "Pushes an integer from stdin",
+                            b'~' => "Pushes a character from stdin",
+                            b'.' => "Pops a value and prints it as an integer",
+                            b',' => "Pops a value and prints it as a unicode character",
+                            b'@' => "Ends the program",
+
+                            b's' => "(Graphics) Pops y then x. Creates a screen with those dimensions",
+                            b'f' => "(Graphics) Pops r, g and b. Sets the drawing colour to rgb(r, g, b)",
+                            b'x' => "(Graphics) Pops y then x. Sets the pixel on the screen position (x,y) to the current drawing colour",
+                            b'c' => "(Graphics) Fills the screen with the current drawing colour",
+                            b'u' => "(Graphics) Pause the interpreter for one frame to sync drawing",
+                            b'l' => "(Graphics) Pops y2, x2, y1, x1. Draws a line from (x1, y1) to (x2, y2)",
+                            b'z' => "(Graphics) Pushes a screen event. Info TODO",
+
+                            b' ' => unreachable!(),
+                            _ => "Invalid operation"
+
+
+                        };
+                        ui.set_max_width(250.0);
+                        ui.label(description)
+                    });
+
+                }
+
             })
             .response;
 
@@ -1862,7 +1937,17 @@ impl App {
             let pos = poss_reverse(pos, self.scene_offset);
             let border_pos = self.settings.befunge_version.border_positions();
             if intersects(border_pos, pos) {
-                self.cursor_pos = pos
+                if self.cursor_pos == pos && self.settings.display_befunge_tooltips {
+                    if should_show_tooltip(&response, self.befunge_tooltip_open) {
+                        self.befunge_tooltip_open = true;
+                        ui.request_repaint()
+                    }
+                } else {
+                    self.befunge_tooltip_open = false;
+                }
+                self.cursor_pos = pos;
+            } else {
+                self.befunge_tooltip_open = false;
             }
         };
 
@@ -2099,8 +2184,7 @@ impl App {
                     "Display non-ascii characters",
                 );
 
-                let settings_button =
-                    egui::Button::new("Advanced settings");
+                let settings_button = egui::Button::new("Advanced settings");
 
                 if ui.add(settings_button).clicked() {
                     self.open_modal = Some(ModalState::Settings);
@@ -2120,6 +2204,11 @@ impl App {
                         poss(((program_size.0 + 2) as f32, (program_size.1 + 2) as f32)),
                     );
                 };
+
+                ui.checkbox(
+                    &mut self.settings.display_befunge_tooltips,
+                    "Show befunge tooltips",
+                );
             });
 
             ui.menu_button("Tools", |ui| {
@@ -2563,6 +2652,89 @@ fn calculate_decay(time: f32) -> Option<f32> {
     }
     let mult = f32::log2(5.0 - time) - 1.322 - 0.3;
     if mult <= 0.0 { None } else { Some(mult) }
+}
+
+// Mostly a copy of egui's Tooltip::should_show_tooltip
+fn should_show_tooltip(response: &Response, is_tooltip_open: bool) -> bool {
+    let style = response.ctx.global_style();
+
+    let tooltip_delay = style.interaction.tooltip_delay;
+    let (
+        time_since_last_scroll,
+        time_since_last_click,
+        time_since_last_pointer_movement,
+        pointer_pos,
+    ) = response.ctx.input(|i| {
+        (
+            i.time_since_last_scroll(),
+            i.pointer.time_since_last_click(),
+            i.pointer.time_since_last_movement(),
+            i.pointer.hover_pos(),
+        )
+    });
+
+    if time_since_last_scroll < tooltip_delay {
+        // See https://github.com/emilk/egui/issues/4781
+        // Note that this means we cannot have `ScrollArea`s in a tooltip.
+        response
+            .ctx
+            .request_repaint_after_secs(tooltip_delay - time_since_last_scroll);
+        return false;
+    }
+
+    let clicked_more_recently_than_moved =
+        time_since_last_click < time_since_last_pointer_movement + 0.1;
+    if clicked_more_recently_than_moved {
+        // It is common to click a widget and then rest the mouse there.
+        // It would be annoying to then see a tooltip for it immediately.
+        // Similarly, clicking should hide the existing tooltip.
+        // Only hovering should lead to a tooltip, not clicking.
+        // The offset is only to allow small movement just right after the click.
+        return false;
+    }
+
+    if is_tooltip_open {
+        // Check if we should automatically stay open:
+
+        if pointer_pos.is_some_and(|pointer_pos| response.rect.contains(pointer_pos)) {
+            // Handle the case of a big tooltip that covers the widget:
+            return true;
+        }
+    }
+
+    // Fast early-outs:
+    if response.enabled() {
+        if !response.hovered() || !response.ctx.input(|i| i.pointer.has_pointer()) {
+            return false;
+        }
+    } else if !response
+        .ctx
+        .rect_contains_pointer(response.layer_id, response.rect)
+    {
+        return false;
+    }
+
+    if !response
+        .ctx
+        .input(|i| i.pointer.is_still() && !i.is_scrolling())
+    {
+        // wait for mouse to stop
+        response.ctx.request_repaint();
+        return false;
+    }
+
+    let time_since_last_interaction = time_since_last_scroll
+        .min(time_since_last_pointer_movement)
+        .min(time_since_last_click);
+    let time_til_tooltip = tooltip_delay - time_since_last_interaction;
+
+    if 0.0 < time_til_tooltip {
+        // Wait until the mouse has been still for a while
+        response.ctx.request_repaint_after_secs(time_til_tooltip);
+        return false;
+    }
+
+    true
 }
 
 fn checkbox_with_underline(ui: &mut egui::Ui, checked: &mut bool, text: &str) -> Response {
