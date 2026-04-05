@@ -518,7 +518,6 @@ impl Mode {
     ) -> bool {
         let step_state = bf_state.step(settings);
         match step_state {
-            StepStatus::Clone => panic!(),
             StepStatus::Normal | StepStatus::NormalNoStep => false,
             StepStatus::Breakpoint => {
                 *running = false;

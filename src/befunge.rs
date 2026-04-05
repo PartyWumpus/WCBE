@@ -95,7 +95,6 @@ pub enum StepStatus {
     Breakpoint,
     Error(&'static str),
     SyncFrame,
-    Clone,
 }
 
 #[derive(Clone)]

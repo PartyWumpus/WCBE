@@ -9,10 +9,23 @@ use egui::ahash::HashMap;
 use crate::{
     app::{self, Settings},
     befunge::{
-        Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, StepStatus, Value, Visited,
+        self, Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, Value, Visited,
         WhereVisited,
     },
 };
+
+const HANDPRINT: i64 = 0x8B38669B;
+const VERSION: i64 = 100;
+
+#[derive(Debug)]
+pub enum StepStatus {
+    Normal,
+    NormalNoStep,
+    Breakpoint,
+    Error(&'static str),
+    SyncFrame,
+    Clone,
+}
 
 #[derive(Clone)]
 pub struct FungeSpace {
@@ -75,7 +88,8 @@ pub struct StateTempName {
 
 #[derive(Clone)]
 pub struct Cursor {
-    pub stack: Vec<Value>,
+    pub storage_offset: Position,
+    pub stacks: Vec<Vec<Value>>,
     pub position: Position,
     pub direction: Direction,
 
@@ -196,11 +210,12 @@ impl Default for StateTempName {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
+            storage_offset: (0, 0),
             string_mode: false,
             semicolon_mode: false,
             position: (0, 0),
             direction: Direction::East,
-            stack: Vec::new(),
+            stacks: vec![vec![]],
         }
     }
 }
@@ -236,8 +251,9 @@ impl State {
         }
     }
 
-    pub fn step(&mut self, settings: &Settings) -> StepStatus {
+    pub fn step(&mut self, settings: &Settings) -> befunge::StepStatus {
         let mut new = Vec::new();
+        let mut breakpoint = false;
         for cursor in &mut self.cursors {
             match cursor.step(&mut self.state, settings) {
                 StepStatus::Clone => {
@@ -247,17 +263,106 @@ impl State {
                     new.push(copy);
                     cursor.step_position(&mut self.state, settings);
                 }
+                StepStatus::Error(str) => {
+                    use app::InvalidOperationBehaviour as IOpBehav;
+                    match settings.invalid_operation_behaviour {
+                        IOpBehav::Reflect => {
+                            cursor.direction = cursor.direction.reverse();
+                            cursor.step_position(&mut self.state, settings);
+                        }
+                        IOpBehav::Halt => return befunge::StepStatus::Error(str),
+                        IOpBehav::Ignore => (),
+                    }
+                }
+                StepStatus::Breakpoint => {
+                    breakpoint = true;
+                }
                 _ => (),
             };
         }
         self.cursors.append(&mut new);
-        StepStatus::Normal
+        if breakpoint {
+            befunge::StepStatus::Breakpoint
+        } else {
+            befunge::StepStatus::Normal
+        }
     }
 }
 
 impl Cursor {
+    fn toss(&mut self) -> &mut Vec<Value> {
+        self.stacks.last_mut().unwrap()
+    }
+
+    fn soss(&mut self) -> Option<&mut Vec<Value>> {
+        let mut rev = self.stacks.iter_mut().rev();
+        rev.next().unwrap();
+        rev.next()
+    }
+
+    fn toss_and_soss(&mut self) -> (&mut Vec<Value>, Option<&mut Vec<Value>>) {
+        let mut rev = self.stacks.iter_mut().rev();
+        (rev.next().unwrap(), rev.next())
+    }
+
+    fn transfer_n_to_toss(&mut self, n: Value) {
+        if n < 0 {
+            for _ in n..0 {
+                self.soss().unwrap().push(0)
+            }
+            return;
+        }
+
+        if let (toss, Some(soss)) = self.toss_and_soss() {
+            let len = soss.len() as i64;
+            if len <= n {
+                for _ in 0..(len - n) {
+                    toss.push(0)
+                }
+                toss.append(soss);
+            } else {
+                let mut arr = soss.split_off((len - n) as usize);
+                toss.append(&mut arr);
+            }
+        } else {
+            for _ in 0..n {
+                self.toss().push(0)
+            }
+        }
+    }
+
+    fn transfer_n_to_soss(&mut self, n: Value) {
+        if n < 0 {
+            for _ in n..0 {
+                self.soss().unwrap().pop();
+            }
+            return;
+        }
+
+        if let (toss, Some(soss)) = self.toss_and_soss() {
+            let len = toss.len() as i64;
+            if len <= n {
+                for _ in 0..(len - n) {
+                    soss.push(0)
+                }
+                soss.append(toss);
+            } else {
+                let mut arr = toss.split_off((len - n) as usize);
+                soss.append(&mut arr);
+            }
+        } else {
+            for _ in 0..n {
+                self.soss().unwrap().push(0)
+            }
+        }
+    }
+
     fn pop(&mut self) -> Value {
-        self.stack.pop().unwrap_or(0)
+        self.toss().pop().unwrap_or(0)
+    }
+
+    fn push(&mut self, val: Value) {
+        self.toss().push(val);
     }
 
     pub fn step_position(&mut self, state: &mut StateTempName, settings: &Settings) {
@@ -374,7 +479,7 @@ impl Cursor {
             if op == b'"' as Value {
                 self.string_mode = false;
             } else {
-                self.stack.push(op);
+                self.push(op);
             }
             self.step_position(state, settings);
             StepStatus::Normal
@@ -408,63 +513,63 @@ impl Cursor {
         match op {
             b'"' => self.string_mode = true,
 
-            b'0'..=b'9' => self.stack.push((op - b'0').into()),
+            b'0'..=b'9' => self.push((op - b'0').into()),
 
             // 2 op operations
             b'+' => {
                 let a = self.pop();
                 let b = self.pop();
-                self.stack.push(b + a);
+                self.push(b + a);
             }
             b'-' => {
                 let a = self.pop();
                 let b = self.pop();
-                self.stack.push(b - a);
+                self.push(b - a);
             }
             b'*' => {
                 let a = self.pop();
                 let b = self.pop();
-                self.stack.push(b * a);
+                self.push(b * a);
             }
             b'/' => {
                 let a = self.pop();
                 let b = self.pop();
                 if a == 0 {
-                    self.stack.push(0);
+                    self.push(0);
                 } else {
-                    self.stack.push(b / a);
+                    self.push(b / a);
                 }
             }
             b'%' => {
                 let a = self.pop();
                 let b = self.pop();
                 if a == 0 {
-                    self.stack.push(0);
+                    self.push(0);
                 } else {
-                    self.stack.push(b % a);
+                    self.push(b % a);
                 }
             }
             b'`' => {
                 let a = self.pop();
                 let b = self.pop();
-                self.stack.push(if b > a { 1 } else { 0 });
+                self.push(if b > a { 1 } else { 0 });
             }
             b'\\' => {
                 let a = self.pop();
                 let b = self.pop();
-                self.stack.push(a);
-                self.stack.push(b);
+                self.push(a);
+                self.push(b);
             }
 
             // one op operations
             b'!' => {
                 let a = self.pop();
-                self.stack.push(if a == 0 { 1 } else { 0 });
+                self.push(if a == 0 { 1 } else { 0 });
             }
             b':' => {
                 let a = self.pop();
-                self.stack.push(a);
-                self.stack.push(a);
+                self.push(a);
+                self.push(a);
             }
             b'$' => {
                 self.pop();
@@ -502,10 +607,10 @@ impl Cursor {
                 }
             }
 
-            // put (this is the big one!)
+            // put
             b'p' => {
-                let y = self.pop();
-                let x = self.pop();
+                let y = self.pop() + self.storage_offset.1;
+                let x = self.pop() + self.storage_offset.0;
                 let value = self.pop();
 
                 if settings.put_history.0 {
@@ -523,9 +628,9 @@ impl Cursor {
 
             // get
             b'g' => {
-                let y = self.pop();
-                let x = self.pop();
-                self.stack.push(state.map.get((x, y)));
+                let y = self.pop() + self.storage_offset.1;
+                let x = self.pop() + self.storage_offset.0;
+                self.push(state.map.get((x, y)));
 
                 if settings.get_history.0 {
                     if let Some(prev_time) = state.get_history.get(&(x, y)) {
@@ -546,7 +651,7 @@ impl Cursor {
                     match itr.next() {
                         None => {
                             if settings.non_blocking_input {
-                                self.stack.push(-1);
+                                self.push(-1);
                                 return StepStatus::Normal;
                             } else {
                                 return StepStatus::Breakpoint;
@@ -557,7 +662,7 @@ impl Cursor {
                             num += (val as u8 - b'0') as Value;
                         }
                         Some(' ') => {
-                            self.stack.push(num);
+                            self.push(num);
                             state.input_buffer = itr.as_str().into();
                             return StepStatus::Normal;
                         }
@@ -573,13 +678,13 @@ impl Cursor {
                 match itr.next() {
                     None => {
                         if settings.non_blocking_input {
-                            self.stack.push(-1);
+                            self.push(-1);
                         } else {
                             return StepStatus::Breakpoint;
                         }
                     }
                     Some(chr) => {
-                        self.stack.push(chr as Value);
+                        self.push(chr as Value);
                         state.input_buffer = itr.as_str().into();
                     }
                 }
@@ -603,7 +708,7 @@ impl Cursor {
 
             b'\'' => {
                 self.step_position(state, settings);
-                self.stack.push(state.map.get(self.position));
+                self.push(state.map.get(self.position));
                 self.step_position_inner(state);
                 return StepStatus::NormalNoStep;
             }
@@ -626,7 +731,7 @@ impl Cursor {
                 return StepStatus::Error("Fingerprints are not yet implemented");
             }
 
-            b'a'..=b'f' => self.stack.push((op - b'a' + 10).into()),
+            b'a'..=b'f' => self.push((op - b'a' + 10).into()),
 
             b'j' => {
                 let count = self.pop();
@@ -681,7 +786,7 @@ impl Cursor {
             }
 
             b'n' => {
-                self.stack.clear();
+                self.toss().clear();
             }
 
             b'q' => return StepStatus::Error("Quit is not yet properly implemented"),
@@ -700,7 +805,23 @@ impl Cursor {
 
             b't' => return StepStatus::Clone,
 
-            b'u' => return StepStatus::Error("Stack-under-stack is not yet implemented"),
+            b'u' => {
+                let count = self.pop();
+
+                if let (toss, Some(soss)) = self.toss_and_soss() {
+                    if count < 0 {
+                        for _ in count..0 {
+                            soss.push(toss.pop().unwrap_or(0));
+                        }
+                    } else {
+                        for _ in 0..count {
+                            toss.push(soss.pop().unwrap_or(0));
+                        }
+                    }
+                } else {
+                    return StepStatus::Error("no soss?");
+                }
+            }
 
             b'w' => {
                 let a = self.pop();
@@ -713,9 +834,98 @@ impl Cursor {
                 }
             }
 
-            b'y' => return StepStatus::Error("Sysinfo is not yet implemented"),
+            b'y' => {
+                let count = self.pop();
+                let original_size = self.toss().len();
 
-            b'{' | b'}' => return StepStatus::Error("Blocks are not yet implemented"),
+                let mut flags = 0;
+                flags |= 0b1; // t (conncurrent funge)
+                //flags |= 0b10; // i (file input)
+                //flags |= 0b100; // o (file output)
+                //flags |= 0b1000; // = (exec)
+                //flags |= 0b10000; // unbuffered IO
+
+                let stack_sizes: Vec<Value> =
+                    self.stacks.iter().map(|s| s.len() as Value).rev().collect();
+
+                self.push(0); // env vars
+                self.push(0); // cli args
+
+                for stack_size in stack_sizes {
+                    self.push(stack_size); // size of stack stack
+                }
+                self.push(self.stacks.len() as Value); // size of stack stack
+
+                // (hour * 256 * 256) + (minute * 256) + (second)
+                self.push(0);
+
+                // ((year - 1900) * 256 * 256) + (month * 256) + (day of month)
+                self.push(0);
+
+                // Bottom right + top left (TODO:)
+                self.push(state.map.max_size.0);
+                self.push(state.map.max_size.1);
+
+                // Top left (TODO:)
+                self.push(0);
+                self.push(0);
+
+                // Storage delta
+                self.push(self.storage_offset.0);
+                self.push(self.storage_offset.1);
+
+                // IP delta
+                self.push(self.direction.0);
+                self.push(self.direction.1);
+
+                // IP position
+                self.push(self.position.0);
+                self.push(self.position.1);
+
+                self.push(0); // Team ID???
+                self.push(0); // IP ID //FIXME:
+                self.push(2); // num dimensions
+                self.push(std::path::MAIN_SEPARATOR as Value); // path seperator
+                self.push(0); // exec behaviour
+                self.push(VERSION); // version
+                self.push(HANDPRINT); // handprint
+                self.push(8); // bytes per cell
+                self.push(flags); // flags
+
+                if count > 0 {
+                    let len = self.toss().len();
+                    let ret = *self.toss().get(len - count as usize).unwrap_or(&0);
+                    self.toss().truncate(original_size);
+                    self.toss().push(ret);
+                }
+            }
+
+            b'{' => {
+                let count = self.pop();
+                self.stacks.push(vec![]);
+                self.transfer_n_to_toss(count);
+                let storage_offset = self.storage_offset;
+                self.soss().unwrap().push(storage_offset.1);
+                self.soss().unwrap().push(storage_offset.0);
+
+                // TODO: add a "peek position" function
+                let (x, y) = self.position;
+                self.step_position_inner(state);
+                self.storage_offset = self.position;
+                self.position = (x, y);
+            }
+            b'}' => {
+                let count = self.pop();
+                if let Some(soss) = self.soss() {
+                    self.storage_offset = (soss.pop().unwrap_or(0), soss.pop().unwrap_or(0));
+
+                    self.transfer_n_to_soss(count);
+
+                    self.stacks.pop();
+                } else {
+                    return StepStatus::Error("no soss?");
+                }
+            }
 
             b'x' => {
                 let y = self.pop();
@@ -739,7 +949,7 @@ impl Befunge for State {
     fn set(&mut self, pos: Position, val: Value) {
         self.state.map.set(pos, val);
     }
-    fn step(&mut self, settings: &Settings) -> StepStatus {
+    fn step(&mut self, settings: &Settings) -> befunge::StepStatus {
         self.step(settings)
     }
 
@@ -760,7 +970,8 @@ impl Befunge for State {
     }
 
     fn stack(&self) -> Vec<Value> {
-        self.cursors[0].stack.clone()
+        // TODO:
+        self.cursors[0].stacks.last().unwrap().clone()
     }
     fn stdout(&self) -> &str {
         &self.state.output
