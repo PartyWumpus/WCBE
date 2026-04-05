@@ -12,6 +12,7 @@ use include_dir::{Dir, include_dir};
 use rfd::FileHandle;
 use std::future::Future;
 use std::ops::Range;
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use egui::{Color32, Pos2, Rect, Scene, Sense, Stroke, TextureHandle, Ui, Vec2, pos2};
@@ -698,6 +699,13 @@ impl App {
             Settings::default()
         };
 
+        {
+            let ctx = cc.egui_ctx.clone();
+            subsecond::register_handler(Arc::new(move || {
+                ctx.request_repaint();
+            }));
+        }
+
         Self {
             scene_rect: Rect::ZERO,
             text_channel: channel(),
@@ -739,6 +747,14 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        subsecond::call(|| {
+            Self::app(self, ui, _frame);
+        })
+    }
+}
+
+impl App {
+    fn app(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         puffin::profile_function!();
 
         macro_rules! shortcut {

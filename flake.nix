@@ -17,6 +17,8 @@
           buildInputs = [
             # Rust
             (rust-bin.fromRustupToolchainFile ./rust-toolchain)
+            dioxus-cli
+            lld
             trunk
 
             # misc. libraries

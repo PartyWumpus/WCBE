@@ -33,18 +33,18 @@ rand = "0.8"
 rand_derive2 = "0.1.21"
 #egui_material_icons = "0.5.0"
 egui_material_icons = { git = "https://github.com/PartyWumpus/hello_egui", branch = "egui-icons-remove-y-offset" }
-
-
-# in theory these can be removed from the web build
-puffin_egui = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
-puffin = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
 const_format = "0.2.35"
 enum_dispatch = "0.3.13"
 strum_macros = "0.28.0"
 strum = "0.28.0"
 
+# in theory these can be removed from the web build
+puffin_egui = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
+puffin = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
+subsecond = "0.7.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dioxus-devtools = "0.7.3"
 clap = { version = "4.5.37", features = ["derive"] }
 env_logger = "0.11.8"
 
@@ -59,7 +59,7 @@ lto="fat"
 strip=true
 
 [profile.dev]
-opt-level = 2
+opt-level = 0
 overflow-checks = false
 
 # Optimize all dependencies even in debug builds:

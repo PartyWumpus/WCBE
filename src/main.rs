@@ -1,10 +1,17 @@
 #![warn(clippy::all)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+mod app;
+mod befunge;
+mod befunge93;
+mod befunge93mini;
+pub use app::App;
+
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    dioxus_devtools::connect_subsecond();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -20,7 +27,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Befunge editor",
         native_options,
-        Box::new(|cc| Ok(Box::new(befunge_editor::App::new(cc)))),
+        Box::new(|cc| Ok(Box::new(crate::App::new(cc)))),
     )
 }
 
@@ -50,7 +57,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(befunge_editor::App::new(cc)))),
+                Box::new(|cc| Ok(Box::new(crate::App::new(cc)))),
             )
             .await;
 
