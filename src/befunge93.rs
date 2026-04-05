@@ -1,3 +1,5 @@
+use std::slice;
+
 use coarsetime::{Duration, Instant};
 use egui::{
     Color32,
@@ -602,8 +604,8 @@ impl Befunge for State {
     fn string_mode(&self) -> bool {
         self.string_mode
     }
-    fn cursor_position(&self) -> Position {
-        self.position
+    fn cursor_positions(&self) -> Vec<Position> {
+        vec![self.position]
     }
     fn cursor_direction(&self) -> (Value, Value) {
         match self.direction {

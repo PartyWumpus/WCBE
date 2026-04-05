@@ -95,6 +95,7 @@ pub enum StepStatus {
     Breakpoint,
     Error(&'static str),
     SyncFrame,
+    Clone,
 }
 
 #[derive(Clone)]
@@ -235,7 +236,7 @@ pub trait Befunge {
     fn program_size(&self) -> (i64, i64);
     fn instruction_count(&self) -> usize;
     fn string_mode(&self) -> bool;
-    fn cursor_position(&self) -> Position;
+    fn cursor_positions(&self) -> Vec<Position>;
     fn cursor_direction(&self) -> (Value, Value);
 
     // TODO: make this &[Value]

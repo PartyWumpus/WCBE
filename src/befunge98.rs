@@ -43,10 +43,19 @@ impl Direction {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct State {
     state: StateTempName,
-    cursor: Cursor,
+    cursors: Vec<Cursor>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            cursors: vec![Cursor::default()],
+            state: StateTempName::default(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -213,16 +222,36 @@ impl State {
         }
     }
 
+    #[deprecated]
     pub fn step_position(&mut self, settings: &Settings) {
-        self.cursor.step_position(&mut self.state, settings);
+        for cursor in &mut self.cursors {
+            cursor.step_position(&mut self.state, settings);
+        }
     }
 
+    #[deprecated]
     pub fn reflect(&mut self) {
-        self.cursor.direction = self.cursor.direction.reverse();
+        for cursor in &mut self.cursors {
+            cursor.direction = cursor.direction.reverse();
+        }
     }
 
     pub fn step(&mut self, settings: &Settings) -> StepStatus {
-        self.cursor.step(&mut self.state, settings)
+        let mut new = Vec::new();
+        for cursor in &mut self.cursors {
+            match cursor.step(&mut self.state, settings) {
+                StepStatus::Clone => {
+                    let mut copy = cursor.clone();
+                    copy.direction = copy.direction.reverse();
+                    copy.step_position(&mut self.state, settings);
+                    new.push(copy);
+                    cursor.step_position(&mut self.state, settings);
+                }
+                _ => (),
+            };
+        }
+        self.cursors.append(&mut new);
+        StepStatus::Normal
     }
 }
 
@@ -669,7 +698,7 @@ impl Cursor {
                 return StepStatus::NormalNoStep;
             }
 
-            b't' => return StepStatus::Error("Split is not yet implemented"),
+            b't' => return StepStatus::Clone,
 
             b'u' => return StepStatus::Error("Stack-under-stack is not yet implemented"),
 
@@ -721,17 +750,17 @@ impl Befunge for State {
         self.state.instruction_count
     }
     fn string_mode(&self) -> bool {
-        self.cursor.string_mode
+        self.cursors[0].string_mode
     }
-    fn cursor_position(&self) -> Position {
-        self.cursor.position
+    fn cursor_positions(&self) -> Vec<Position> {
+        self.cursors.iter().map(|c| c.position).collect()
     }
     fn cursor_direction(&self) -> (Value, Value) {
-        (self.cursor.direction.0, self.cursor.direction.1)
+        (self.cursors[0].direction.0, self.cursors[0].direction.1)
     }
 
     fn stack(&self) -> Vec<Value> {
-        self.cursor.stack.clone()
+        self.cursors[0].stack.clone()
     }
     fn stdout(&self) -> &str {
         &self.state.output

@@ -503,7 +503,7 @@ impl Mode {
             } => Mode::Editing {
                 undos: Vec::new(),
                 redos: Vec::new(),
-                cursor_state: CursorState::new(bf_state.cursor_position()),
+                cursor_state: CursorState::new(bf_state.cursor_positions()[0]),
                 fungespace: snapshot.0,
                 stdin: snapshot.1,
             },
@@ -518,6 +518,7 @@ impl Mode {
     ) -> bool {
         let step_state = bf_state.step(settings);
         match step_state {
+            StepStatus::Clone => panic!(),
             StepStatus::Normal | StepStatus::NormalNoStep => false,
             StepStatus::Breakpoint => {
                 *running = false;
@@ -1027,7 +1028,7 @@ impl App {
                             });
                             ui.vertical(|ui| {
                                 ui.label("location");
-                                ui.label(format!("{:?}", bf_state.cursor_position()));
+                                ui.label(format!("{:?}", bf_state.cursor_positions()));
                             });
                             ui.vertical(|ui| {
                                 ui.label("direction");
@@ -1334,7 +1335,7 @@ impl App {
             ..
         } = &self.mode
         {
-            self.scene_offset = bf_state.cursor_position();
+            self.scene_offset = bf_state.cursor_positions()[0];
             self.scene_rect.set_center(poss((0.5, 0.5)));
             // disable panning
             ui.input_mut(|input| {
@@ -1544,13 +1545,15 @@ impl App {
                                 .get_history()
                                 .retain(|_, v| v.elapsed() < Duration::from_millis(5000));
 
-                            painter.rect(
-                                recter(bf_state.cursor_position(), self.scene_offset).shrink(1.0),
-                                0.0,
-                                Color32::PURPLE,
-                                Stroke::NONE,
-                                StrokeKind::Outside,
-                            );
+                            for pos in bf_state.cursor_positions() {
+                                painter.rect(
+                                    recter(pos, self.scene_offset).shrink(1.0),
+                                    0.0,
+                                    Color32::PURPLE,
+                                    Stroke::NONE,
+                                    StrokeKind::Outside,
+                                );
+                            }
 
                             for (pos, visited) in bf_state.pos_history() {
                                 let time = (visited.time_since(now).as_millis() as f32) / 1000.0;
@@ -2401,7 +2404,7 @@ impl App {
 
                     let resp = ui.text_edit_multiline(bf_state.stdin());
                     if resp.changed()
-                        && let val = bf_state.get(bf_state.cursor_position())
+                        && let val = bf_state.get(bf_state.cursor_positions()[0])
                         && (val == b'~' as i64 || val == b'&' as i64)
                     {
                         *running = true

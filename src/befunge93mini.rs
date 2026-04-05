@@ -4,7 +4,7 @@ use egui::{
     ahash::{HashSet, HashSetExt},
 };
 use rand::Rng;
-use std::iter;
+use std::{iter, slice};
 
 use egui::ahash::HashMap;
 
@@ -571,8 +571,8 @@ impl Befunge for State {
     fn string_mode(&self) -> bool {
         self.string_mode
     }
-    fn cursor_position(&self) -> Position {
-        (self.position.0 as i64, self.position.1 as i64)
+    fn cursor_positions(&self) -> Vec<Position> {
+        vec![(self.position.0 as i64, self.position.1 as i64)]
     }
     fn cursor_direction(&self) -> (Value, Value) {
         match self.direction {
