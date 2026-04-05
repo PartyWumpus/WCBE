@@ -22,6 +22,7 @@ pub enum StepStatus {
     Normal,
     NormalNoStep,
     Breakpoint,
+    Die,
     Error(&'static str),
     SyncFrame,
     Clone,
@@ -92,10 +93,7 @@ pub struct Cursor {
     pub stacks: Vec<Vec<Value>>,
     pub position: Position,
     pub direction: Direction,
-
-    // consider combining into enum
     pub string_mode: bool,
-    pub semicolon_mode: bool,
 }
 
 impl FungeSpaceTrait for FungeSpace {
@@ -212,7 +210,6 @@ impl Default for Cursor {
         Self {
             storage_offset: (0, 0),
             string_mode: false,
-            semicolon_mode: false,
             position: (0, 0),
             direction: Direction::East,
             stacks: vec![vec![]],
@@ -253,8 +250,9 @@ impl State {
 
     pub fn step(&mut self, settings: &Settings) -> befunge::StepStatus {
         let mut new = Vec::new();
+        let mut deleted = Vec::new();
         let mut breakpoint = false;
-        for cursor in &mut self.cursors {
+        for (i, cursor) in (self.cursors).iter_mut().enumerate() {
             match cursor.step(&mut self.state, settings) {
                 StepStatus::Clone => {
                     let mut copy = cursor.clone();
@@ -262,6 +260,9 @@ impl State {
                     copy.step_position(&mut self.state, settings);
                     new.push(copy);
                     cursor.step_position(&mut self.state, settings);
+                }
+                StepStatus::Die => {
+                    deleted.push(i);
                 }
                 StepStatus::Error(str) => {
                     use app::InvalidOperationBehaviour as IOpBehav;
@@ -281,6 +282,16 @@ impl State {
             };
         }
         self.cursors.append(&mut new);
+
+        // slow af :pensive:
+        for i in deleted.into_iter().rev() {
+            if self.cursors.len() == 1 {
+                return befunge::StepStatus::Breakpoint;
+            } else {
+                self.cursors.remove(i);
+            }
+        }
+
         if breakpoint {
             befunge::StepStatus::Breakpoint
         } else {
@@ -480,13 +491,6 @@ impl Cursor {
                 self.string_mode = false;
             } else {
                 self.push(op);
-            }
-            self.step_position(state, settings);
-            StepStatus::Normal
-        } else if self.semicolon_mode {
-            let op = op.unwrap_or(b' ' as Value);
-            if op == b';' as Value {
-                self.semicolon_mode = false;
             }
             self.step_position(state, settings);
             StepStatus::Normal
@@ -691,7 +695,7 @@ impl Cursor {
             }
 
             // halt is dealt with higher up
-            b'@' => return StepStatus::Breakpoint,
+            b'@' => return StepStatus::Die,
 
             // -- IO output
             b'.' => {
@@ -713,9 +717,13 @@ impl Cursor {
                 return StepStatus::NormalNoStep;
             }
 
-            b';' => {
-                self.semicolon_mode = true;
-            }
+            b';' => loop {
+                self.step_position_inner(state);
+                let op = state.map.get(self.position);
+                if op == b';' as Value {
+                    break;
+                }
+            },
 
             b'[' => {
                 self.direction = self.direction.turn_left();
@@ -738,16 +746,17 @@ impl Cursor {
 
                 if count < 0 {
                     self.direction = self.direction.reverse();
-                    for _ in count..-1 {
+                    for _ in count..-2 {
                         self.step_position_inner(state);
                     }
                     self.direction = self.direction.reverse();
                     return StepStatus::NormalNoStep;
                 } else {
-                    for _ in 0..count {
+                    for _ in 0..count + 1 {
                         self.step_position_inner(state);
                     }
                 }
+                return StepStatus::NormalNoStep;
             }
             b'k' => {
                 let count = self.pop();
@@ -768,10 +777,11 @@ impl Cursor {
                         break;
                     }
                 }
+                let (a, b) = self.position;
                 self.position = (x, y);
 
                 if let Ok(op) = op.try_into() {
-                    for _ in 0..count {
+                    for _ in 0..count + 1 {
                         match op {
                             b'#' => {
                                 self.step_position_inner(state);
@@ -782,6 +792,8 @@ impl Cursor {
                         };
                     }
                 }
+
+                self.position = (a, b);
                 return StepStatus::Normal;
             }
 
