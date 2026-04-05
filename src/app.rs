@@ -566,7 +566,7 @@ impl Mode {
                     BefungeVersion::Befunge98(bf_state) => {
                         match settings.invalid_operation_behaviour {
                             IOpBehav::Reflect => {
-                                bf_state.direction = bf_state.direction.reverse();
+                                bf_state.reflect();
                                 bf_state.step_position(settings);
                                 false
                             }

@@ -236,7 +236,7 @@ pub trait Befunge {
     fn instruction_count(&self) -> usize;
     fn string_mode(&self) -> bool;
     fn cursor_position(&self) -> Position;
-    fn cursor_direction(&self) -> Direction;
+    fn cursor_direction(&self) -> (Value, Value);
 
     // TODO: make this &[Value]
     fn stack(&self) -> Vec<Value>;

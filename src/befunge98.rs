@@ -1,10 +1,7 @@
 use std::cmp;
 
 use coarsetime::{Duration, Instant};
-use egui::{
-    Color32,
-    ahash::{HashSet, HashSetExt},
-};
+use egui::ahash::{HashSet, HashSetExt};
 use rand::Rng;
 
 use egui::ahash::HashMap;
@@ -12,8 +9,8 @@ use egui::ahash::HashMap;
 use crate::{
     app::{self, Settings},
     befunge::{
-        Befunge, Direction, FungeSpaceTrait, GraphicalEvent, Graphics, Position, StepStatus, Value,
-        Visited, WhereVisited,
+        Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, StepStatus, Value, Visited,
+        WhereVisited,
     },
 };
 
@@ -24,26 +21,58 @@ pub struct FungeSpace {
     max_size: (i64, i64),
 }
 
-#[derive(Clone)]
+#[derive(Default, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Debug)]
+pub struct Direction(Value, Value);
+
+impl Direction {
+    const North: Self = Self(0, -1);
+    const South: Self = Self(0, 1);
+    const East: Self = Self(1, 0);
+    const West: Self = Self(-1, 0);
+
+    pub fn reverse(&self) -> Self {
+        Self(-self.0, -self.1)
+    }
+
+    pub fn turn_right(&self) -> Self {
+        Self(-self.1, self.0)
+    }
+
+    pub fn turn_left(&self) -> Self {
+        Self(self.1, -self.0)
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct State {
+    state: StateTempName,
+    cursor: Cursor,
+}
+
+#[derive(Clone)]
+pub struct StateTempName {
     pub instruction_count: usize,
     pub map: FungeSpace,
 
-    // consider combining into enum
-    pub string_mode: bool,
-    pub semicolon_mode: bool,
-
-    pub position: Position,
-    pub direction: Direction,
     pub pos_history: HashMap<Position, Visited>,
     pub get_history: HashMap<Position, Instant>,
     pub put_history: HashMap<Position, Instant>,
-    pub stack: Vec<Value>,
     pub output: String,
     pub graphics: Option<Graphics>,
     pub breakpoints: HashSet<Position>,
     //pub input_buffer: VecDeque<i64>,
     pub input_buffer: String,
+}
+
+#[derive(Clone)]
+pub struct Cursor {
+    pub stack: Vec<Value>,
+    pub position: Position,
+    pub direction: Direction,
+
+    // consider combining into enum
+    pub string_mode: bool,
+    pub semicolon_mode: bool,
 }
 
 impl FungeSpaceTrait for FungeSpace {
@@ -137,19 +166,15 @@ impl FungeSpace {
     }
 }
 
-impl Default for State {
+impl Default for StateTempName {
     fn default() -> Self {
         Self {
             instruction_count: 0,
             map: FungeSpace::new(),
-            string_mode: false,
-            semicolon_mode: false,
-            position: (0, 0),
-            direction: Direction::East,
+
             pos_history: HashMap::default(),
             put_history: HashMap::default(),
             get_history: HashMap::default(),
-            stack: Vec::new(),
             output: String::new(),
             graphics: None,
             breakpoints: HashSet::new(),
@@ -159,23 +184,58 @@ impl Default for State {
     }
 }
 
-impl State {
-    fn pop(&mut self) -> Value {
-        self.stack.pop().unwrap_or(0)
+impl Default for Cursor {
+    fn default() -> Self {
+        Self {
+            string_mode: false,
+            semicolon_mode: false,
+            position: (0, 0),
+            direction: Direction::East,
+            stack: Vec::new(),
+        }
     }
+}
 
+impl StateTempName {
     pub fn new_from_fungespace(fungespace: app::FungeSpace) -> Self {
         Self {
             map: FungeSpace::new_from_fungespace(fungespace),
             ..Default::default()
         }
     }
+}
+
+impl State {
+    pub fn new_from_fungespace(fungespace: app::FungeSpace) -> Self {
+        Self {
+            state: StateTempName::new_from_fungespace(fungespace),
+            ..Default::default()
+        }
+    }
 
     pub fn step_position(&mut self, settings: &Settings) {
+        self.cursor.step_position(&mut self.state, settings);
+    }
+
+    pub fn reflect(&mut self) {
+        self.cursor.direction = self.cursor.direction.reverse();
+    }
+
+    pub fn step(&mut self, settings: &Settings) -> StepStatus {
+        self.cursor.step(&mut self.state, settings)
+    }
+}
+
+impl Cursor {
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap_or(0)
+    }
+
+    pub fn step_position(&mut self, state: &mut StateTempName, settings: &Settings) {
         let (x, y) = self.position;
-        self.step_position_inner();
+        self.step_position_inner(state);
         if settings.pos_history.0 {
-            if let Some(visited) = self.pos_history.get_mut(&(x, y)) {
+            if let Some(visited) = state.pos_history.get_mut(&(x, y)) {
                 match self.direction {
                     Direction::North => {
                         visited.wawa.set_north(true);
@@ -193,9 +253,14 @@ impl State {
                         visited.wawa.set_west(true);
                         visited.west = Instant::recent();
                     }
+                    _ => {
+                        // TODO:
+                        visited.wawa.set_east(true);
+                        visited.west = Instant::recent();
+                    }
                 }
             } else {
-                self.pos_history.insert(
+                state.pos_history.insert(
                     (x, y),
                     match self.direction {
                         Direction::North => Visited {
@@ -218,48 +283,49 @@ impl State {
                             west: Instant::recent(),
                             ..Default::default()
                         },
+                        // TODO:
+                        _ => Visited {
+                            wawa: WhereVisited::new().with_east(true),
+                            east: Instant::recent(),
+                            ..Default::default()
+                        },
                     },
                 );
             }
         }
     }
 
-    fn step_position_inner(&mut self) {
+    fn step_position_inner(&mut self, state: &StateTempName) {
         let (x, y) = self.position;
-        match self.direction {
-            Direction::North => self.position = (x, y - 1),
-            Direction::South => self.position = (x, y + 1),
-            Direction::East => self.position = (x + 1, y),
-            Direction::West => self.position = (x - 1, y),
-        }
+        self.position = (x + self.direction.0, y + self.direction.1);
 
         if self.position.0 == -1 {
-            self.position.0 = self.map.max_size.0.saturating_add(1);
-        } else if self.position.0.wrapping_sub(1) >= self.map.max_size.0 {
+            self.position.0 = state.map.max_size.0.saturating_add(1);
+        } else if self.position.0.wrapping_sub(1) >= state.map.max_size.0 {
             self.position.0 = 0
         };
 
         if self.position.1 == -1 {
-            self.position.1 = self.map.max_size.1.saturating_add(1);
-        } else if self.position.1.wrapping_sub(1) >= self.map.max_size.1 {
+            self.position.1 = state.map.max_size.1.saturating_add(1);
+        } else if self.position.1.wrapping_sub(1) >= state.map.max_size.1 {
             self.position.1 = 0
         };
     }
 
-    pub fn step(&mut self, settings: &Settings) -> StepStatus {
-        self.instruction_count += 1;
-        let status = self.step_inner(settings);
-        if self.breakpoints.contains(&self.position) {
+    pub fn step(&mut self, state: &mut StateTempName, settings: &Settings) -> StepStatus {
+        state.instruction_count += 1;
+        let status = self.step_inner(state, settings);
+        if state.breakpoints.contains(&self.position) {
             return StepStatus::Breakpoint;
         }
         if settings.skip_spaces {
             let mut pos = None;
             loop {
-                if self.map.get(self.position) == b' ' as Value {
+                if state.map.get(self.position) == b' ' as Value {
                     pos = Some(self.position);
                     // small visual bug because it steps onto the last space
                     // add a peek position
-                    self.step_position(settings);
+                    self.step_position(state, settings);
                 } else {
                     break;
                 }
@@ -271,8 +337,8 @@ impl State {
         status
     }
 
-    fn step_inner(&mut self, settings: &Settings) -> StepStatus {
-        let op = self.map.get_nullable(self.position);
+    fn step_inner(&mut self, state: &mut StateTempName, settings: &Settings) -> StepStatus {
+        let op = state.map.get_nullable(self.position);
 
         if self.string_mode {
             let op = op.unwrap_or(b' ' as Value);
@@ -281,21 +347,21 @@ impl State {
             } else {
                 self.stack.push(op);
             }
-            self.step_position(settings);
+            self.step_position(state, settings);
             StepStatus::Normal
         } else if self.semicolon_mode {
             let op = op.unwrap_or(b' ' as Value);
             if op == b';' as Value {
                 self.semicolon_mode = false;
             }
-            self.step_position(settings);
+            self.step_position(state, settings);
             StepStatus::Normal
         } else if let Some(op) = op {
             if let Ok(op) = op.try_into() {
-                let status = self.do_op(op, settings);
+                let status = self.do_op(op, state, settings);
                 match status {
                     StepStatus::Normal | StepStatus::SyncFrame => {
-                        self.step_position(settings);
+                        self.step_position(state, settings);
                     }
                     _ => (),
                 };
@@ -304,12 +370,12 @@ impl State {
                 StepStatus::Error("Invalid operation")
             }
         } else {
-            self.step_position(settings);
+            self.step_position(state, settings);
             StepStatus::Normal
         }
     }
 
-    fn do_op(&mut self, op: u8, settings: &Settings) -> StepStatus {
+    fn do_op(&mut self, op: u8, state: &mut StateTempName, settings: &Settings) -> StepStatus {
         match op {
             b'"' => self.string_mode = true,
 
@@ -381,13 +447,14 @@ impl State {
             b'^' => self.direction = Direction::North,
             b'v' => self.direction = Direction::South,
             b'#' => {
-                self.step_position(settings);
-                self.step_position_inner();
+                self.step_position(state, settings);
+                self.step_position_inner(state);
                 return StepStatus::NormalNoStep;
             }
 
             // dynamic direction changes
-            b'?' => self.direction = rand::thread_rng().r#gen(),
+            // FIXME:
+            //b'?' => self.direction = rand::thread_rng().r#gen(),
             b'_' => {
                 let status = self.pop();
                 if status == 0 {
@@ -413,38 +480,38 @@ impl State {
                 let value = self.pop();
 
                 if settings.put_history.0 {
-                    if let Some(prev_time) = self.put_history.get(&(x, y)) {
+                    if let Some(prev_time) = state.put_history.get(&(x, y)) {
                         if prev_time.elapsed_since_recent() > Duration::from_millis(500) {
-                            self.put_history.insert((x, y), Instant::recent());
+                            state.put_history.insert((x, y), Instant::recent());
                         }
                     } else {
-                        self.put_history.insert((x, y), Instant::recent());
+                        state.put_history.insert((x, y), Instant::recent());
                     }
                 }
 
-                self.map.set((x, y), value);
+                state.map.set((x, y), value);
             }
 
             // get
             b'g' => {
                 let y = self.pop();
                 let x = self.pop();
-                self.stack.push(self.map.get((x, y)));
+                self.stack.push(state.map.get((x, y)));
 
                 if settings.get_history.0 {
-                    if let Some(prev_time) = self.get_history.get(&(x, y)) {
+                    if let Some(prev_time) = state.get_history.get(&(x, y)) {
                         if prev_time.elapsed_since_recent() > Duration::from_millis(500) {
-                            self.get_history.insert((x, y), Instant::recent());
+                            state.get_history.insert((x, y), Instant::recent());
                         }
                     } else {
-                        self.get_history.insert((x, y), Instant::recent());
+                        state.get_history.insert((x, y), Instant::recent());
                     }
                 }
             }
 
             // input
             b'&' => {
-                let mut itr = self.input_buffer.chars();
+                let mut itr = state.input_buffer.chars();
                 let mut num = 0;
                 loop {
                     match itr.next() {
@@ -462,7 +529,7 @@ impl State {
                         }
                         Some(' ') => {
                             self.stack.push(num);
-                            self.input_buffer = itr.as_str().into();
+                            state.input_buffer = itr.as_str().into();
                             return StepStatus::Normal;
                         }
                         Some(_) => {
@@ -473,7 +540,7 @@ impl State {
             }
 
             b'~' => {
-                let mut itr = self.input_buffer.chars();
+                let mut itr = state.input_buffer.chars();
                 match itr.next() {
                     None => {
                         if settings.non_blocking_input {
@@ -484,7 +551,7 @@ impl State {
                     }
                     Some(chr) => {
                         self.stack.push(chr as Value);
-                        self.input_buffer = itr.as_str().into();
+                        state.input_buffer = itr.as_str().into();
                     }
                 }
             }
@@ -495,20 +562,20 @@ impl State {
             // -- IO output
             b'.' => {
                 let a = self.pop().to_string();
-                self.output.push_str(&a);
-                self.output.push(' ');
+                state.output.push_str(&a);
+                state.output.push(' ');
             }
             b',' => {
                 let Ok(a) = (self.pop() as u32).try_into() else {
                     return StepStatus::Error("Invalid UTF-8 char");
                 };
-                self.output.push(a);
+                state.output.push(a);
             }
 
             b'\'' => {
-                self.step_position(settings);
-                self.stack.push(self.map.get(self.position));
-                self.step_position_inner();
+                self.step_position(state, settings);
+                self.stack.push(state.map.get(self.position));
+                self.step_position_inner(state);
                 return StepStatus::NormalNoStep;
             }
 
@@ -517,21 +584,11 @@ impl State {
             }
 
             b'[' => {
-                self.direction = match self.direction {
-                    Direction::North => Direction::West,
-                    Direction::South => Direction::East,
-                    Direction::East => Direction::North,
-                    Direction::West => Direction::South,
-                }
+                self.direction = self.direction.turn_left();
             }
 
             b']' => {
-                self.direction = match self.direction {
-                    Direction::North => Direction::East,
-                    Direction::South => Direction::West,
-                    Direction::East => Direction::South,
-                    Direction::West => Direction::North,
-                }
+                self.direction = self.direction.turn_right();
             }
 
             b'=' => return StepStatus::Error("Execute is not yet implemented"),
@@ -548,13 +605,13 @@ impl State {
                 if count < 0 {
                     self.direction = self.direction.reverse();
                     for _ in count..-1 {
-                        self.step_position_inner();
+                        self.step_position_inner(state);
                     }
                     self.direction = self.direction.reverse();
                     return StepStatus::NormalNoStep;
                 } else {
                     for _ in 0..count {
-                        self.step_position_inner();
+                        self.step_position_inner(state);
                     }
                 }
             }
@@ -562,8 +619,8 @@ impl State {
                 let count = self.pop();
 
                 if count == 0 {
-                    self.step_position(settings);
-                    self.step_position_inner();
+                    self.step_position(state, settings);
+                    self.step_position_inner(state);
                     return StepStatus::NormalNoStep;
                 }
 
@@ -571,8 +628,8 @@ impl State {
                 // TODO: loop detection
                 let mut op;
                 loop {
-                    self.step_position_inner();
-                    op = self.map.get(self.position);
+                    self.step_position_inner(state);
+                    op = state.map.get(self.position);
                     if op != b' ' as Value {
                         break;
                     }
@@ -583,10 +640,10 @@ impl State {
                     for _ in 0..count {
                         match op {
                             b'#' => {
-                                self.step_position_inner();
+                                self.step_position_inner(state);
                             }
                             _ => {
-                                self.do_op(op, settings);
+                                self.do_op(op, state, settings);
                             }
                         };
                     }
@@ -601,19 +658,14 @@ impl State {
             b'q' => return StepStatus::Error("Quit is not yet properly implemented"),
 
             b'r' => {
-                self.direction = match self.direction {
-                    Direction::North => Direction::South,
-                    Direction::South => Direction::North,
-                    Direction::East => Direction::West,
-                    Direction::West => Direction::East,
-                }
+                self.direction = self.direction.reverse();
             }
 
             b's' => {
-                self.step_position(settings);
+                self.step_position(state, settings);
                 let a = self.pop();
-                self.map.set_inner(self.position, a);
-                self.step_position_inner();
+                state.map.set_inner(self.position, a);
+                self.step_position_inner(state);
                 return StepStatus::NormalNoStep;
             }
 
@@ -625,23 +677,9 @@ impl State {
                 let a = self.pop();
                 let b = self.pop();
                 match a.cmp(&b) {
-                    cmp::Ordering::Greater => {
-                        self.direction = match self.direction {
-                            Direction::North => Direction::West,
-                            Direction::South => Direction::East,
-                            Direction::East => Direction::North,
-                            Direction::West => Direction::South,
-                        }
-                    }
+                    cmp::Ordering::Greater => self.direction = self.direction.turn_left(),
 
-                    cmp::Ordering::Less => {
-                        self.direction = match self.direction {
-                            Direction::North => Direction::East,
-                            Direction::South => Direction::West,
-                            Direction::East => Direction::South,
-                            Direction::West => Direction::North,
-                        }
-                    }
+                    cmp::Ordering::Less => self.direction = self.direction.turn_right(),
                     cmp::Ordering::Equal => (),
                 }
             }
@@ -653,13 +691,7 @@ impl State {
             b'x' => {
                 let y = self.pop();
                 let x = self.pop();
-                self.direction = match (x, y) {
-                    (0, 1) => Direction::North,
-                    (1, 0) => Direction::East,
-                    (0, -1) => Direction::South,
-                    (-1, 0) => Direction::East,
-                    _ => return StepStatus::Error("Invalid vector for x"),
-                }
+                self.direction = Direction(x, y);
             }
 
             // noop
@@ -673,58 +705,58 @@ impl State {
 
 impl Befunge for State {
     fn get(&self, pos: Position) -> Value {
-        self.map.get(pos)
+        self.state.map.get(pos)
     }
     fn set(&mut self, pos: Position, val: Value) {
-        self.map.set(pos, val);
+        self.state.map.set(pos, val);
     }
     fn step(&mut self, settings: &Settings) -> StepStatus {
         self.step(settings)
     }
 
     fn program_size(&self) -> Position {
-        self.map.max_size
+        self.state.map.max_size
     }
     fn instruction_count(&self) -> usize {
-        self.instruction_count
+        self.state.instruction_count
     }
     fn string_mode(&self) -> bool {
-        self.string_mode
+        self.cursor.string_mode
     }
     fn cursor_position(&self) -> Position {
-        self.position
+        self.cursor.position
     }
-    fn cursor_direction(&self) -> Direction {
-        self.direction
+    fn cursor_direction(&self) -> (Value, Value) {
+        (self.cursor.direction.0, self.cursor.direction.1)
     }
 
     fn stack(&self) -> Vec<Value> {
-        self.stack.clone()
+        self.cursor.stack.clone()
     }
     fn stdout(&self) -> &str {
-        &self.output
+        &self.state.output
     }
     fn stdin(&mut self) -> &mut String {
-        &mut self.input_buffer
+        &mut self.state.input_buffer
     }
     fn graphics(&mut self) -> Option<&mut Graphics> {
-        self.graphics.as_mut()
+        self.state.graphics.as_mut()
     }
 
     fn pos_history(&mut self) -> &mut HashMap<Position, Visited> {
-        &mut self.pos_history
+        &mut self.state.pos_history
     }
     fn get_history(&mut self) -> &mut HashMap<Position, Instant> {
-        &mut self.get_history
+        &mut self.state.get_history
     }
     fn put_history(&mut self) -> &mut HashMap<Position, Instant> {
-        &mut self.put_history
+        &mut self.state.put_history
     }
     fn breakpoints(&mut self) -> &mut HashSet<Position> {
-        &mut self.breakpoints
+        &mut self.state.breakpoints
     }
 
     fn serialize(&self) -> String {
-        self.map.serialize()
+        self.state.map.serialize()
     }
 }

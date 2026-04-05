@@ -574,8 +574,13 @@ impl Befunge for State {
     fn cursor_position(&self) -> Position {
         (self.position.0 as i64, self.position.1 as i64)
     }
-    fn cursor_direction(&self) -> Direction {
-        self.direction
+    fn cursor_direction(&self) -> (Value, Value) {
+        match self.direction {
+            Direction::North => (0, 1),
+            Direction::South => (0, -1),
+            Direction::East => (1, 0),
+            Direction::West => (-1, 0),
+        }
     }
 
     fn stack(&self) -> Vec<i64> {
