@@ -1,7 +1,7 @@
 # A befunge editor
 
 A fast 64 bit befunge93 IDE with breakpoint support. Inspired largely by [BefunExec](https://github.com/Mikescher/BefunExec). Can run [in the web](https://partywumpus.github.io/befunge-editor/) or locally.
-I estimate a speed of about 30MHz max on my CPU (with the position history turned off, it lowers to 25MHz with it on). It likely runs slower in the web, but is still fast.
+I estimate a speed of about 100MHz max on my CPU (with the position history turned off and with PGO, it lowers to 50MHz for normal use). It likely runs slower in the web, but is still fast.
 
 https://github.com/user-attachments/assets/1dea6b09-69a3-4802-8f5a-d125a5439d34
 
@@ -20,19 +20,18 @@ Then run: `cargo run --release`
 ## Features
 
 - All of befunge93
-- Breakpoints
+- Very minimal befunge98
+- Breakpoints & Watchpoints
 - Effectively infinite fungespace (up to the signed integer limit)
 - Supports (most of) the [befunge-with-graphics](https://github.com/Jachdich/befunge-with-graphics) operations
 
 ## Features I would like to add in future:
 
 - Manage shortcuts better instead of duplicating code all the time
-- Watching the values of locations (like befunexec)
 - Breakpoints that pause on value change
 - Some of the preprocessor things from befunexec (break & watch, but not replace)
 - A better way to move the screen large distances. Possibly a "minimap" style thing?
 - Undo in play mode
-- A befunge98 mode
 - Profile file threads
 - Configurable "what to do on # at program edge"
 

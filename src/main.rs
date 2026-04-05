@@ -5,6 +5,7 @@ mod app;
 mod befunge;
 mod befunge93;
 mod befunge93mini;
+mod befunge98;
 pub use app::App;
 
 // When compiling natively:

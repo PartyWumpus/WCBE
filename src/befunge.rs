@@ -11,7 +11,7 @@ use enum_dispatch::enum_dispatch;
 use rand_derive2::RandGen;
 use strum_macros::EnumDiscriminants;
 
-use crate::{app::Settings, befunge93, befunge93mini};
+use crate::{app::Settings, befunge93, befunge93mini, befunge98};
 
 pub type Position = (i64, i64);
 pub type Value = i64;
@@ -258,6 +258,7 @@ pub trait Befunge {
 pub enum BefungeVersion {
     Befunge93(befunge93::State),
     Befunge93Mini(befunge93mini::State),
+    Befunge98(befunge98::State),
 }
 
 impl BefungeVersionDiscriminants {
@@ -267,6 +268,7 @@ impl BefungeVersionDiscriminants {
             BefungeVersionDiscriminants::Befunge93Mini => {
                 ((0, 0), (i8::MAX as i64, i8::MAX as i64))
             }
+            BefungeVersionDiscriminants::Befunge98 => ((i64::MIN, i64::MIN), (i64::MAX, i64::MAX)),
         }
     }
 }

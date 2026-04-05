@@ -21,7 +21,7 @@ use crate::befunge::{
     Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
     GraphicalEvent, Position, StepStatus, Value, get_color_of_bf_op,
 };
-use crate::{befunge93, befunge93mini};
+use crate::{befunge93, befunge93mini, befunge98};
 
 static PRESETS: Dir = include_dir!("./bf_programs");
 static CURSOR_COLOR: Color32 = Color32::from_rgb(110, 200, 255);
@@ -355,6 +355,7 @@ impl CharRenderer {
 enum ModalState {
     Settings,
     SetPosition(i64, i64),
+    Info,
 }
 
 #[derive(Clone)]
@@ -477,6 +478,9 @@ impl Mode {
                             befunge93mini::State::new_from_fungespace(fungespace.clone()),
                         ))
                     }
+                    BefungeVersionDiscriminants::Befunge98 => Box::new(BefungeVersion::Befunge98(
+                        befunge98::State::new_from_fungespace(fungespace.clone()),
+                    )),
                 };
 
                 *bf_state.stdin() = stdin.clone();
@@ -542,6 +546,24 @@ impl Mode {
                         }
                     }
                     BefungeVersion::Befunge93Mini(bf_state) => {
+                        match settings.invalid_operation_behaviour {
+                            IOpBehav::Reflect => {
+                                bf_state.direction = bf_state.direction.reverse();
+                                bf_state.step_position(settings);
+                                false
+                            }
+                            IOpBehav::Halt => {
+                                *error_state = Some(error);
+                                *running = false;
+                                true
+                            }
+                            IOpBehav::Ignore => {
+                                bf_state.step_position(settings);
+                                false
+                            }
+                        }
+                    }
+                    BefungeVersion::Befunge98(bf_state) => {
                         match settings.invalid_operation_behaviour {
                             IOpBehav::Reflect => {
                                 bf_state.direction = bf_state.direction.reverse();
@@ -808,8 +830,8 @@ impl App {
         egui::TopBottomPanel::bottom("bottom_panel").show(ui, |ui| {
             puffin::profile_scope!("bottom panel");
             egui::MenuBar::new().ui(ui, |ui| {
-                // prob should figure out a better way of doing this instead of hardcoding 600
-                if ui.available_width() > 600.0 {
+                // prob should figure out a better way of doing this instead of hardcoding 750
+                if ui.available_width() > 750.0 {
                     powered_by_egui_and_eframe(ui);
                     ui.add(egui::github_link_file!(
                         "https://github.com/PartyWumpus/befunge-editor/blob/main/",
@@ -961,6 +983,11 @@ impl App {
                                         ),
                                     )
                                 }
+                                BefungeVersionDiscriminants::Befunge98 => {
+                                    BefungeVersion::Befunge98(
+                                        befunge98::State::new_from_fungespace(snapshot.0.clone()),
+                                    )
+                                }
                             };
                             *bf_state.breakpoints() = breakpoints;
                             *bf_state.stdin() = snapshot.1.clone();
@@ -1109,6 +1136,9 @@ impl App {
                                     befunge93mini::State::new_from_fungespace(snapshot.0.clone()),
                                 )
                             }
+                            BefungeVersionDiscriminants::Befunge98 => BefungeVersion::Befunge98(
+                                befunge98::State::new_from_fungespace(snapshot.0.clone()),
+                            ),
                         };
                         *bf_state.breakpoints() = breakpoints;
                         *bf_state.stdin() = snapshot.1.clone();
@@ -2147,6 +2177,7 @@ impl App {
                     match open_modal {
                         ModalState::Settings => Self::settings_modal(ui, &mut self.settings),
                         ModalState::SetPosition(x, y) => Self::set_position_modal(ui, x, y),
+                        ModalState::Info => Self::info_modal(ui),
                     }
 
                     ui.add_space(32.0);
@@ -2165,7 +2196,7 @@ impl App {
                 if modal.should_close() {
                     let prev_modal = self.open_modal.take();
                     match prev_modal.unwrap() {
-                        ModalState::Settings => (),
+                        ModalState::Settings | ModalState::Info => (),
                         ModalState::SetPosition(x, y) => {
                             self.scene_offset = (x, y);
                             self.scene_rect.set_center(poss((0.5, 0.5)));
@@ -2240,6 +2271,10 @@ impl App {
                     self.open_modal = Some(ModalState::SetPosition(0, 0));
                 };
             });
+
+            if ui.button("Help").clicked() {
+                self.open_modal = Some(ModalState::Info);
+            }
 
             egui::widgets::global_theme_preference_switch(ui);
 
@@ -2441,6 +2476,15 @@ impl App {
                 {
                     self.settings.befunge_version = BefungeVersionDiscriminants::Befunge93Mini
                 };
+                if ui
+                    .add(egui::Button::selectable(
+                        matches!(version, BefungeVersionDiscriminants::Befunge98),
+                        "Befunge98 (WIP)",
+                    ))
+                    .clicked()
+                {
+                    self.settings.befunge_version = BefungeVersionDiscriminants::Befunge98
+                };
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.add_space(2.0);
@@ -2492,6 +2536,19 @@ impl App {
         ui.heading("Set position");
         ui.add(egui::DragValue::new(x).speed(0.1));
         ui.add(egui::DragValue::new(y).speed(0.1));
+    }
+
+    fn info_modal(ui: &mut egui::Ui) {
+        ui.heading("What is befunge?");
+        ui.label("Befunge is a stack-based, self-overwriting 2D programming language.");
+        ui.label("More description TODO.");
+
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label("Just go read the ");
+            ui.hyperlink_to("esolang wiki page", "https://esolangs.org/wiki/Befunge");
+            ui.label(".");
+        });
     }
 
     fn draw_char(
