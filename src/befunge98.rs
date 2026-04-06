@@ -26,6 +26,7 @@ pub enum StepStatus {
     NormalNoStep,
     Breakpoint,
     Die,
+    Exit,
     Error(&'static str),
     SyncFrame,
     Clone,
@@ -35,6 +36,7 @@ pub enum StepStatus {
 pub struct FungeSpace {
     map: HashMap<Position, Value>,
     zero_page: Box<[Value; 100]>,
+    min_size: (i64, i64),
     max_size: (i64, i64),
 }
 
@@ -101,18 +103,11 @@ pub struct Cursor {
 
 impl FungeSpaceTrait for FungeSpace {
     fn set(&mut self, pos: Position, val: Value) {
-        if pos.0 < 0 || pos.1 < 0 {
-            return;
-        };
-
         self.set_inner(pos, val);
     }
 
     fn get(&self, pos: Position) -> Value {
-        if pos.0 < 0 || pos.1 < 0 {
-            return 0;
-        }
-        if pos.0 < 10 && pos.1 < 10 {
+        if pos.0 >= 0 && pos.0 < 10 && pos.1 >= 0 && pos.1 < 10 {
             self.zero_page[(pos.0 + pos.1 * 10) as usize]
         } else {
             *self.map.get(&pos).unwrap_or(&(b' ' as Value))
@@ -139,7 +134,8 @@ impl FungeSpace {
         Self {
             map: HashMap::default(),
             zero_page: Box::new([b' '.into(); 100]),
-            max_size: (11, 11),
+            min_size: (0, 0),
+            max_size: (10, 10),
         }
     }
 
@@ -155,15 +151,12 @@ impl FungeSpace {
             map: input.map,
             zero_page,
             max_size,
+            min_size: (0, 0),
         }
     }
 
     fn set_inner(&mut self, pos: Position, val: Value) {
-        if pos.0 < 0 || pos.1 < 0 {
-            return;
-        };
-
-        if pos.0 < 10 && pos.1 < 10 {
+        if pos.0 >= 0 && pos.0 < 10 && pos.1 >= 0 && pos.1 < 10 {
             self.zero_page[(pos.0 + pos.1 * 10) as usize] = val
         } else {
             if val == b' ' as Value {
@@ -178,11 +171,18 @@ impl FungeSpace {
             if pos.1 > self.max_size.1 {
                 self.max_size.1 = pos.1
             }
+
+            if pos.0 < self.min_size.0 {
+                self.min_size.0 = pos.0
+            }
+            if pos.1 < self.min_size.1 {
+                self.min_size.1 = pos.1
+            }
         };
     }
 
     pub fn get_nullable(&self, pos: Position) -> Option<Value> {
-        if pos.0 < 10 && pos.1 < 10 {
+        if pos.0 >= 0 && pos.0 < 10 && pos.1 >= 0 && pos.1 < 10 {
             Some(self.zero_page[usize::try_from(pos.0 + pos.1 * 10).unwrap()])
         } else {
             self.map.get(&pos).copied()
@@ -267,6 +267,7 @@ impl State {
                 StepStatus::Die => {
                     deleted.push(i);
                 }
+                StepStatus::Exit => return befunge::StepStatus::Breakpoint,
                 StepStatus::Error(str) => {
                     use app::InvalidOperationBehaviour as IOpBehav;
                     match settings.invalid_operation_behaviour {
@@ -447,16 +448,36 @@ impl Cursor {
         let (x, y) = self.position;
         self.position = (x + self.direction.0, y + self.direction.1);
 
-        if self.position.0 == -1 {
-            self.position.0 = state.map.max_size.0.saturating_add(1);
-        } else if self.position.0.wrapping_sub(1) >= state.map.max_size.0 {
-            self.position.0 = 0
+        if self.position.0 > state.map.max_size.0 || self.position.1 > state.map.max_size.1 {
+            let tx = if self.direction.0 == 0 {
+                i64::MAX
+            } else {
+                (state.map.min_size.0 - x) / -self.direction.0
+            };
+            let ty = if self.direction.1 == 0 {
+                i64::MAX
+            } else {
+                (state.map.min_size.1 - y) / -self.direction.1
+            };
+            let t = (tx).min(ty);
+            self.position.0 = x + t * -self.direction.0;
+            self.position.1 = y + t * -self.direction.1;
         };
 
-        if self.position.1 == -1 {
-            self.position.1 = state.map.max_size.1.saturating_add(1);
-        } else if self.position.1.wrapping_sub(1) >= state.map.max_size.1 {
-            self.position.1 = 0
+        if self.position.0 < state.map.min_size.0 || self.position.1 < state.map.min_size.1 {
+            let tx = if self.direction.0 == 0 {
+                i64::MAX
+            } else {
+                (state.map.max_size.0 - x) / -self.direction.0
+            };
+            let ty = if self.direction.1 == 0 {
+                i64::MAX
+            } else {
+                (state.map.max_size.1 - y) / -self.direction.1
+            };
+            let t = (tx).min(ty);
+            self.position.0 = x + t * -self.direction.0;
+            self.position.1 = y + t * -self.direction.1;
         };
     }
 
@@ -472,7 +493,7 @@ impl Cursor {
                 if state.map.get(self.position) == b' ' as Value {
                     pos = Some(self.position);
                     // small visual bug because it steps onto the last space
-                    // add a peek position
+                    // TODO: add a peek position
                     self.step_position(state, settings);
                 } else {
                     break;
@@ -746,7 +767,17 @@ impl Cursor {
 
             b'=' => return StepStatus::Error("Execute is not yet implemented"),
 
-            b'A'..=b'Z' | b'(' | b')' => {
+            b'(' => {
+                let fingerprint_id = self.build_fingerprint();
+                return StepStatus::Error("Unknown fingerprint");
+            }
+
+            b')' => {
+                self.build_fingerprint();
+                return StepStatus::Error("Unknown fingerprint");
+            }
+
+            b'A'..=b'Z' => {
                 return StepStatus::Error("Fingerprints are not yet implemented");
             }
 
@@ -812,7 +843,7 @@ impl Cursor {
                 self.toss().clear();
             }
 
-            b'q' => return StepStatus::Error("Quit is not yet properly implemented"),
+            b'q' => return StepStatus::Exit,
 
             b'r' => {
                 self.direction = self.direction.reverse();
@@ -885,13 +916,13 @@ impl Cursor {
                 // ((year - 1900) * 256 * 256) + (month * 256) + (day of month)
                 self.push(0);
 
-                // Bottom right + top left (TODO:)
-                self.push(state.map.max_size.0);
-                self.push(state.map.max_size.1);
+                // Bottom right + top left
+                self.push(state.map.max_size.0 - state.map.min_size.0);
+                self.push(state.map.max_size.1 - state.map.min_size.1);
 
-                // Top left (TODO:)
-                self.push(0);
-                self.push(0);
+                // Top left
+                self.push(state.map.min_size.0);
+                self.push(state.map.min_size.1);
 
                 // Storage delta
                 self.push(self.storage_offset.0);
@@ -962,6 +993,16 @@ impl Cursor {
             _ => return StepStatus::Error("Invalid operation"),
         };
         StepStatus::Normal
+    }
+
+    fn build_fingerprint(&mut self) -> i64 {
+        let count = self.pop();
+        let mut fingerprint_id = 1;
+        for _ in 0..count {
+            let val = self.pop();
+            fingerprint_id *= val;
+        }
+        fingerprint_id
     }
 }
 

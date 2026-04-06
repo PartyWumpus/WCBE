@@ -5,7 +5,7 @@ use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
 use egui::{
     FontId, Id, Key, KeyboardShortcut, Label, LayerId, Mesh, Modal, ModifierNames, Modifiers,
-    Response, RichText, ScrollArea, Shape, StrokeKind, TextStyle,
+    Response, RichText, ScrollArea, Shape, StrokeKind, TextStyle, UiBuilder,
 };
 use egui_material_icons::icons;
 use include_dir::{Dir, include_dir};
@@ -120,7 +120,7 @@ impl FungeSpaceTrait for FungeSpace {
                 width = *x
             }
         }
-        (width + 1, height + 1)
+        (width, height)
     }
 
     fn entries(&self) -> impl Iterator<Item = (Position, Value)> {
@@ -2397,6 +2397,24 @@ impl App {
                         });
                 };
 
+                ui.style_mut().spacing.scroll = ScrollStyle {
+                    floating: true,
+                    bar_width: 8.0,
+                    floating_width: 8.0,
+                    floating_allocated_width: 6.0,
+                    foreground_color: false,
+
+                    dormant_background_opacity: 0.4,
+                    dormant_handle_opacity: 0.4,
+
+                    active_background_opacity: 0.6,
+                    active_handle_opacity: 0.6,
+
+                    interact_background_opacity: 0.8,
+                    interact_handle_opacity: 0.8,
+                    ..ScrollStyle::solid()
+                };
+
                 ui.label("Stack:");
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.add_space(2.0);
@@ -2411,30 +2429,35 @@ impl App {
                     ui.label("Input:");
 
                     ui.add_space(2.0);
-                    ui.label(bf_state.stdout());
+
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width(), 75.0),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            // change to ::both ?
+                            ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
+                                .id_salt("wawa")
+                                .stick_to_bottom(true)
+                                .show(ui, |ui| {
+                                    let painter = ui.painter();
+                                    painter.rect_filled(
+                                        ui.clip_rect(),
+                                        5.0,
+                                        ui.visuals().faint_bg_color,
+                                    );
+                                    ui.label(bf_state.stdout())
+                                });
+                        },
+                    );
+
                     ui.label("Output:");
                     ui.add_space(2.0);
 
                     ui.vertical(|ui| {
                         let text_style = TextStyle::Body;
 
-                        ui.style_mut().spacing.scroll = ScrollStyle {
-                            floating: true,
-                            bar_width: 8.0,
-                            floating_width: 8.0,
-                            floating_allocated_width: 6.0,
-                            foreground_color: false,
-
-                            dormant_background_opacity: 0.4,
-                            dormant_handle_opacity: 0.4,
-
-                            active_background_opacity: 0.6,
-                            active_handle_opacity: 0.6,
-
-                            interact_background_opacity: 0.8,
-                            interact_handle_opacity: 0.8,
-                            ..ScrollStyle::solid()
-                        };
                         ScrollArea::vertical()
                             .auto_shrink([false; 2])
                             .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
