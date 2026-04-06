@@ -154,7 +154,6 @@ impl Graphics {
 }
 
 // TODO: replace with graph traversal maybe
-// TODO: make generic over the version of befunge being used
 pub fn get_color_of_bf_op(op: u8) -> Option<Color32> {
     enum OpTypes {
         Number,

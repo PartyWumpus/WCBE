@@ -1,7 +1,10 @@
 use std::cmp;
 
 use coarsetime::{Duration, Instant};
-use egui::ahash::{HashSet, HashSetExt};
+use egui::{
+    Color32,
+    ahash::{HashSet, HashSetExt},
+};
 use rand::Rng;
 
 use egui::ahash::HashMap;
@@ -959,6 +962,46 @@ impl Cursor {
             _ => return StepStatus::Error("Invalid operation"),
         };
         StepStatus::Normal
+    }
+}
+
+pub fn get_color_of_bf_op(op: u8) -> Option<Color32> {
+    enum OpTypes {
+        Number,
+        Operator,
+        Direction,
+        Modification,
+        IO,
+        Freaky,
+        None,
+    }
+
+    let flavor = match op {
+        b'0'..=b'9' | b'a'..=b'f' => OpTypes::Number,
+        b'+' | b'-' | b'*' | b'/' | b'%' | b'`' | b'"' | b'\'' | b'\\' | b'!' | b':' | b'$'
+        | b'k' | b'w' => OpTypes::Operator,
+
+        b'>' | b'<' | b'^' | b'v' | b'#' | b'?' | b'_' | b'|' | b';' | b'[' | b']' | b'j'
+        | b'r' | b'x' | b'z' => OpTypes::Direction,
+
+        b'p' | b'g' | b'(' | b')' | b'{' | b'}' | b'n' => OpTypes::Modification,
+
+        b'&' | b'~' | b'.' | b',' | b'@' | b'q' | b's' | b'i' | b'o' => OpTypes::IO,
+
+        b'=' | b't' | b'u' | b'y' => OpTypes::Freaky,
+
+        // noop
+        _ => OpTypes::None,
+    };
+
+    match flavor {
+        OpTypes::Number => Some(Color32::from_rgb(32, 159, 181)),
+        OpTypes::Operator => Some(Color32::from_rgb(210, 15, 57)),
+        OpTypes::Direction => Some(Color32::from_rgb(64, 160, 43)),
+        OpTypes::Modification => Some(Color32::from_rgb(136, 57, 239)),
+        OpTypes::IO => Some(Color32::from_rgb(234, 118, 203)),
+        OpTypes::Freaky => Some(Color32::from_rgb(114, 135, 253)),
+        OpTypes::None => None,
     }
 }
 

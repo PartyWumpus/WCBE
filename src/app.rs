@@ -18,8 +18,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use egui::{Color32, Pos2, Rect, Scene, Sense, Stroke, TextureHandle, Ui, Vec2, pos2};
 
 use crate::befunge::{
-    Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
-    GraphicalEvent, Position, StepStatus, Value, get_color_of_bf_op,
+    self, Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
+    GraphicalEvent, Position, StepStatus, Value,
 };
 use crate::{befunge93, befunge93mini, befunge98};
 
@@ -2574,7 +2574,15 @@ impl App {
                     Color32::GRAY,
                 );
                 char_renderer.draw(mesh, pos, b' ', Color32::GRAY);
-            } else if let Some(color) = get_color_of_bf_op(val) {
+            // this is ugly AF. TODO: improve
+            } else if let Some(color) = if matches!(
+                settings.befunge_version,
+                BefungeVersionDiscriminants::Befunge98
+            ) {
+                befunge98::get_color_of_bf_op(val)
+            } else {
+                befunge::get_color_of_bf_op(val)
+            } {
                 puffin::profile_scope_if!(PROFILE_EACH_CHAR, "char colored");
                 char_renderer.draw(mesh, pos, val, color);
             } else {
