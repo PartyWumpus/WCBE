@@ -48,6 +48,7 @@ Then run: `cargo run --release`
 
 - [NULL](https://catseye.tc/view/funge-98/library/NULL.markdown)
 - [ROMA](https://catseye.tc/view/funge-98/library/ROMA.markdown)
+- [BOOL](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#bool)
 
 ### Not web 
 - [HRTI](https://catseye.tc/view/funge-98/library/HRTI.markdown) (this is fixable)

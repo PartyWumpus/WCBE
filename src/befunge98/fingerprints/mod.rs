@@ -6,6 +6,7 @@ use crate::{
 #[cfg(not(target_arch = "wasm32"))]
 mod hrti;
 
+mod bool;
 mod null;
 mod roma;
 
@@ -39,6 +40,7 @@ pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
     Some(match id {
         0x4e554c4c => null::list_of_ops(),
         0x524f4d41 => roma::list_of_ops(),
+        0x424f4f4c => bool::list_of_ops(),
 
         #[cfg(not(target_arch = "wasm32"))]
         0x48525449 => hrti::list_of_ops(),
