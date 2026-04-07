@@ -1,4 +1,7 @@
-use std::cmp;
+use std::{
+    cmp,
+    sync::atomic::{AtomicI64, Ordering},
+};
 
 use coarsetime::{Duration, Instant};
 use egui::{
@@ -15,10 +18,14 @@ use crate::{
         self, Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, Value, Visited,
         WhereVisited,
     },
+    befunge98::fingerprints::{FingerprintFunction, fingerprint_from_id},
 };
+
+mod fingerprints;
 
 const HANDPRINT: i64 = 0x8B38669B;
 const VERSION: i64 = 100;
+static ID_COUNTER: AtomicI64 = AtomicI64::new(0);
 
 #[derive(Debug)]
 pub enum StepStatus {
@@ -90,6 +97,11 @@ pub struct StateTempName {
     pub breakpoints: HashSet<Position>,
     //pub input_buffer: VecDeque<i64>,
     pub input_buffer: String,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub hrti_start: std::time::Instant,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub hrti_marks: HashMap<i64, std::time::Instant>,
 }
 
 #[derive(Clone)]
@@ -98,6 +110,8 @@ pub struct Cursor {
     pub stacks: Vec<Vec<Value>>,
     pub position: Position,
     pub direction: Direction,
+    pub fingerprints: Box<[Vec<FingerprintFunction>; 26]>,
+    pub id: i64,
     pub string_mode: bool,
 }
 
@@ -204,17 +218,25 @@ impl Default for StateTempName {
             breakpoints: HashSet::new(),
             //input_buffer: VecDeque::new(),
             input_buffer: String::new(),
+
+            #[cfg(not(target_arch = "wasm32"))]
+            hrti_marks: HashMap::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            hrti_start: std::time::Instant::now(),
         }
     }
 }
 
 impl Default for Cursor {
     fn default() -> Self {
+        let val = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         Self {
             storage_offset: (0, 0),
             string_mode: false,
             position: (0, 0),
             direction: Direction::East,
+            id: val,
+            fingerprints: Box::new([const { Vec::new() }; 26]),
             stacks: vec![vec![]],
         }
     }
@@ -237,20 +259,6 @@ impl State {
         }
     }
 
-    #[deprecated]
-    pub fn step_position(&mut self, settings: &Settings) {
-        for cursor in &mut self.cursors {
-            cursor.step_position(&mut self.state, settings);
-        }
-    }
-
-    #[deprecated]
-    pub fn reflect(&mut self) {
-        for cursor in &mut self.cursors {
-            cursor.direction = cursor.direction.reverse();
-        }
-    }
-
     pub fn step(&mut self, settings: &Settings) -> befunge::StepStatus {
         let mut new = Vec::new();
         let mut deleted = Vec::new();
@@ -259,6 +267,7 @@ impl State {
             match cursor.step(&mut self.state, settings) {
                 StepStatus::Clone => {
                     let mut copy = cursor.clone();
+                    copy.id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                     copy.direction = copy.direction.reverse();
                     copy.step_position(&mut self.state, settings);
                     new.push(copy);
@@ -499,7 +508,9 @@ impl Cursor {
                     break;
                 }
             }
-            if let Some(pos) = pos {
+            if self.string_mode
+                && let Some(pos) = pos
+            {
                 self.position = pos;
             }
         };
@@ -769,16 +780,28 @@ impl Cursor {
 
             b'(' => {
                 let fingerprint_id = self.build_fingerprint();
-                return StepStatus::Error("Unknown fingerprint");
+                if self.load_fingerprint(fingerprint_id) {
+                    self.push(fingerprint_id);
+                    self.push(1);
+                } else {
+                    return StepStatus::Error("Unknown fingerprint");
+                }
             }
 
             b')' => {
-                self.build_fingerprint();
-                return StepStatus::Error("Unknown fingerprint");
+                let fingerprint_id = self.build_fingerprint();
+                if !self.unload_fingerprint(fingerprint_id) {
+                    return StepStatus::Error("Unknown fingerprint");
+                }
             }
 
             b'A'..=b'Z' => {
-                return StepStatus::Error("Fingerprints are not yet implemented");
+                let op = self.fingerprints[(op - b'A') as usize].last();
+                if let Some(op) = op {
+                    op(self, state, settings);
+                } else {
+                    self.direction = self.direction.reverse();
+                }
             }
 
             b'a'..=b'f' => self.push((op - b'a' + 10).into()),
@@ -788,7 +811,7 @@ impl Cursor {
 
                 if count < 0 {
                     self.direction = self.direction.reverse();
-                    for _ in count..-2 {
+                    for _ in count..-1 {
                         self.step_position_inner(state);
                     }
                     self.direction = self.direction.reverse();
@@ -815,15 +838,14 @@ impl Cursor {
                 loop {
                     self.step_position_inner(state);
                     op = state.map.get(self.position);
-                    if op != b' ' as Value {
+                    if op != b' ' as Value && op != b';' as Value {
                         break;
                     }
                 }
-                let (a, b) = self.position;
                 self.position = (x, y);
 
                 if let Ok(op) = op.try_into() {
-                    for _ in 0..count + 1 {
+                    for _ in 0..count {
                         match op {
                             b'#' => {
                                 self.step_position_inner(state);
@@ -835,7 +857,6 @@ impl Cursor {
                     }
                 }
 
-                self.position = (a, b);
                 return StepStatus::Normal;
             }
 
@@ -910,9 +931,11 @@ impl Cursor {
                 }
                 self.push(self.stacks.len() as Value); // size of stack stack
 
+                // TODO:
                 // (hour * 256 * 256) + (minute * 256) + (second)
                 self.push(0);
 
+                // TODO:
                 // ((year - 1900) * 256 * 256) + (month * 256) + (day of month)
                 self.push(0);
 
@@ -937,7 +960,7 @@ impl Cursor {
                 self.push(self.position.1);
 
                 self.push(0); // Team ID???
-                self.push(0); // IP ID //FIXME:
+                self.push(self.id); // IP ID
                 self.push(2); // num dimensions
                 self.push(std::path::MAIN_SEPARATOR as Value); // path seperator
                 self.push(0); // exec behaviour
@@ -997,12 +1020,37 @@ impl Cursor {
 
     fn build_fingerprint(&mut self) -> i64 {
         let count = self.pop();
-        let mut fingerprint_id = 1;
+        let mut fingerprint_id = 0;
         for _ in 0..count {
             let val = self.pop();
-            fingerprint_id *= val;
+            fingerprint_id *= 256;
+            fingerprint_id += val;
         }
         fingerprint_id
+    }
+
+    fn load_fingerprint(&mut self, fingerprint_id: i64) -> bool {
+        let Some(fingerprint) = fingerprint_from_id(fingerprint_id) else {
+            return false;
+        };
+        for (i, func) in fingerprint.iter().enumerate() {
+            if let Some(func) = func {
+                self.fingerprints[i].push(*func);
+            }
+        }
+        true
+    }
+
+    fn unload_fingerprint(&mut self, fingerprint_id: i64) -> bool {
+        let Some(fingerprint) = fingerprint_from_id(fingerprint_id) else {
+            return false;
+        };
+        for (i, func) in fingerprint.iter().enumerate() {
+            if func.is_some() {
+                self.fingerprints[i].pop();
+            }
+        }
+        true
     }
 }
 

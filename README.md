@@ -1,7 +1,8 @@
 # A befunge editor
 
-A fast 64 bit befunge93 IDE with breakpoint support. Inspired largely by [BefunExec](https://github.com/Mikescher/BefunExec). Can run [in the web](https://partywumpus.github.io/befunge-editor/) or locally.
-I estimate a speed of about 100MHz max on my CPU (with the position history turned off and with PGO, it lowers to 50MHz for normal use). It likely runs slower in the web, but is still fast.
+A fast 64 bit befunge93/98 IDE with breakpoint support. Inspired largely by [BefunExec](https://github.com/Mikescher/BefunExec). Can run [in the web](https://partywumpus.github.io/befunge-editor/) or locally.
+I estimate a speed of about 100MHz max on my CPU (in b93 with the position history turned off and with PGO, it lowers to 50MHz for normal use). It likely runs slower in the web, but is still fast.
+Befunge98 is not as fast.
 
 https://github.com/user-attachments/assets/1dea6b09-69a3-4802-8f5a-d125a5439d34
 
@@ -20,20 +21,36 @@ Then run: `cargo run --release`
 ## Features
 
 - All of befunge93
-- Very minimal befunge98
+- Concurrent befunge98 (minus file reading/writing (`i`/`o`) and exec (`=`))
 - Breakpoints & Watchpoints
 - Effectively infinite fungespace (up to the signed integer limit)
-- Supports (most of) the [befunge-with-graphics](https://github.com/Jachdich/befunge-with-graphics) operations
+- Supports (most of) the [befunge-with-graphics](https://github.com/Jachdich/befunge-with-graphics) operations in bf93
 
 ## Features I would like to add in future:
 
-- Manage shortcuts better instead of duplicating code all the time
+- Manage shortcuts better instead of duplicating code all the time in app.rs
 - Breakpoints that pause on value change
 - Some of the preprocessor things from befunexec (break & watch, but not replace)
 - A better way to move the screen large distances. Possibly a "minimap" style thing?
 - Undo in play mode
 - Profile file threads
 - Configurable "what to do on # at program edge"
+- Be fully conformant with mycology.b98 (almost done)
+    - Shrink containing rect when spaces are placed at limits
+    - Add latin-1 parsing mode
+    - Make `;` take 0 ticks
+    - Make `q` actually enter an "ended" state and show a return value
+- More b98 fingerprints
+
+## Supported befunge98 fingerprints
+
+### All platforms
+
+- [NULL](https://catseye.tc/view/funge-98/library/NULL.markdown)
+- [ROMA](https://catseye.tc/view/funge-98/library/ROMA.markdown)
+
+### Not web 
+- [HRTI](https://catseye.tc/view/funge-98/library/HRTI.markdown) (this is fixable)
 
 ## Thanks
 

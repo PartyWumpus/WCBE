@@ -376,8 +376,8 @@ impl File {
 pub struct App {
     texture: TextureHandle,
     text_channel: (
-        Sender<(FileHandle, Option<String>)>,
-        Receiver<(FileHandle, Option<String>)>,
+        Sender<(FileHandle, Option<Vec<u8>>)>,
+        Receiver<(FileHandle, Option<Vec<u8>>)>,
     ),
     settings: Settings,
     mode: Mode,
@@ -563,24 +563,14 @@ impl Mode {
                             }
                         }
                     }
-                    BefungeVersion::Befunge98(bf_state) => {
-                        match settings.invalid_operation_behaviour {
-                            IOpBehav::Reflect => {
-                                bf_state.reflect();
-                                bf_state.step_position(settings);
-                                false
-                            }
-                            IOpBehav::Halt => {
-                                *error_state = Some(error);
-                                *running = false;
-                                true
-                            }
-                            IOpBehav::Ignore => {
-                                bf_state.step_position(settings);
-                                false
-                            }
+                    BefungeVersion::Befunge98(_) => match settings.invalid_operation_behaviour {
+                        IOpBehav::Reflect | IOpBehav::Ignore => unreachable!(),
+                        IOpBehav::Halt => {
+                            *error_state = Some(error);
+                            *running = false;
+                            true
                         }
-                    }
+                    },
                 }
             }
             StepStatus::SyncFrame => true,
@@ -817,7 +807,9 @@ impl App {
                     undos: Vec::new(),
                     redos: Vec::new(),
                     cursor_state: CursorState::default(),
-                    fungespace: FungeSpace::new_from_string(&text),
+                    // TODO: support latin-1 as well as utf-8, for the mycology suite
+                    // latin-1 mode should turn form feed (12) into nothing
+                    fungespace: FungeSpace::new_from_string(&String::from_utf8_lossy(&text)),
                     stdin: String::new(),
                 }
             }
@@ -1247,8 +1239,7 @@ impl App {
                         let file = file.clone();
                         execute(async move {
                             let text = file.read().await;
-                            let _ = sender
-                                .send((file, Some(String::from_utf8_lossy(&text).to_string())));
+                            let _ = sender.send((file, Some(text)));
                             ctx.request_repaint();
                         });
                     }
@@ -2056,8 +2047,7 @@ impl App {
                         let file = task.await;
                         if let Some(file) = file {
                             let text = file.read().await;
-                            let _ = sender
-                                .send((file, Some(String::from_utf8_lossy(&text).to_string())));
+                            let _ = sender.send((file, Some(text)));
                             ctx.request_repaint();
                         }
                     });
@@ -2132,8 +2122,7 @@ impl App {
                     let file = file.clone();
                     execute(async move {
                         let text = file.read().await;
-                        let _ =
-                            sender.send((file, Some(String::from_utf8_lossy(&text).to_string())));
+                        let _ = sender.send((file, Some(text)));
                         ctx.request_repaint();
                     });
                 }
