@@ -1,4 +1,4 @@
-# A befunge editor
+# WCBE (Wumpus' Concurrent Befunge Editor)
 
 A fast 64 bit befunge93/98 IDE with breakpoint support. Inspired largely by [BefunExec](https://github.com/Mikescher/BefunExec). Can run [in the web](https://partywumpus.github.io/befunge-editor/) or locally.
 I estimate a speed of about 100MHz max on my CPU (in b93 with the position history turned off and with PGO, it lowers to 50MHz for normal use). It likely runs slower in the web, but is still fast.
@@ -28,6 +28,7 @@ Then run: `cargo run --release`
 
 ## Features I would like to add in future:
 
+- CLI support
 - Manage shortcuts better instead of duplicating code all the time in app.rs
 - Breakpoints that pause on value change
 - Some of the preprocessor things from befunexec (break & watch, but not replace)

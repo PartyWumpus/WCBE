@@ -1,6 +1,6 @@
 [package]
-name = "befunge_editor"
-version = "0.1.0"
+name = "WCBE"
+version = "0.2.0"
 authors = ["PartyWumpus <evie@partywump.us>"]
 edition = "2024"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]

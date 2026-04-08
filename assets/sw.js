@@ -2,8 +2,8 @@ var cacheName = 'egui-template-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './befunge_editor.js',
-  './befunge_editor_bg.wasm',
+  './WCBE.js',
+  './WCBE_bg.wasm',
 ];
 var fetchArgs = { cache: 'no-store', headers: { "x-magic-no-cache": '1' } };
 

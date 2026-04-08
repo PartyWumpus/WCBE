@@ -3,6 +3,40 @@
 version = 4
 
 [[package]]
+name = "WCBE"
+version = "0.2.0"
+dependencies = [
+ "bitfield-struct",
+ "clap",
+ "clipline",
+ "coarsetime",
+ "const_format",
+ "dioxus-devtools",
+ "eframe",
+ "egui",
+ "egui_material_icons",
+ "enum_dispatch",
+ "env_logger",
+ "futures",
+ "getrandom 0.2.17",
+ "include_dir",
+ "log",
+ "paste",
+ "puffin",
+ "puffin_egui",
+ "rand 0.8.5",
+ "rand_derive2",
+ "rfd",
+ "serde",
+ "strum",
+ "strum_macros",
+ "subsecond",
+ "thiserror 2.0.18",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "accesskit"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,40 +452,6 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
-
-[[package]]
-name = "befunge_editor"
-version = "0.1.0"
-dependencies = [
- "bitfield-struct",
- "clap",
- "clipline",
- "coarsetime",
- "const_format",
- "dioxus-devtools",
- "eframe",
- "egui",
- "egui_material_icons",
- "enum_dispatch",
- "env_logger",
- "futures",
- "getrandom 0.2.17",
- "include_dir",
- "log",
- "paste",
- "puffin",
- "puffin_egui",
- "rand 0.8.5",
- "rand_derive2",
- "rfd",
- "serde",
- "strum",
- "strum_macros",
- "subsecond",
- "thiserror 2.0.18",
- "wasm-bindgen-futures",
- "web-sys",
-]
 
 [[package]]
 name = "bincode"

@@ -26,7 +26,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "Befunge editor",
+        "Wumpus' Concurrent Befunge Editor",
         native_options,
         Box::new(|cc| Ok(Box::new(crate::App::new(cc)))),
     )

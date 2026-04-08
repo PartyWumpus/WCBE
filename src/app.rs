@@ -826,7 +826,7 @@ impl App {
                 if ui.available_width() > 750.0 {
                     powered_by_egui_and_eframe(ui);
                     ui.add(egui::github_link_file!(
-                        "https://github.com/PartyWumpus/befunge-editor/blob/main/",
+                        "https://github.com/PartyWumpus/WCBE/blob/main/",
                         "Source code."
                     ));
                 }
