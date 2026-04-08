@@ -3,6 +3,9 @@ use crate::{
     befunge98::{Cursor, StateTempName},
 };
 
+pub type FingerprintFunction = fn(&mut Cursor, &mut StateTempName, &Settings);
+pub type Fingerprint = [Option<FingerprintFunction>; 26];
+
 #[cfg(not(target_arch = "wasm32"))]
 mod hrti;
 
@@ -23,27 +26,48 @@ macro_rules! fingerprint_map {
     }};
 }
 
-fn fingerprint_to_i64(str: &str) -> i64 {
-    let mut num = 0;
-    for char in str.chars() {
+#[macro_export]
+macro_rules! fingerprint_match {
+    ($id:ident, [$($(#[$attr:meta])* $enabled:ident),* $(,)?]) => {{
+        $(
+            $(#[$attr])*
+            paste::paste! {
+                const [<$enabled:upper _ ID>]: i64 = fingerprint_to_i64(stringify!([<$enabled:upper>]).as_bytes());
+            }
+        )*
+
+        match $id {
+        $(
+            $(#[$attr])*
+            paste::paste! {
+                [<$enabled:upper _ ID>]
+            } => Some(paste::paste! { [<$enabled>]::list_of_ops() }),
+        )*
+        _ => None
+        }
+    }};
+}
+
+pub const fn fingerprint_to_i64(bytes: &[u8]) -> i64 {
+    let mut num: i64 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
         num *= 256;
-        num += char as i64;
+        num += bytes[i] as i64;
+        i += 1;
     }
     num
 }
 
-pub type FingerprintFunction = fn(&mut Cursor, &mut StateTempName, &Settings);
-pub type Fingerprint = [Option<FingerprintFunction>; 26];
-
 pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
-    // TODO: macro this match too
-    Some(match id {
-        0x4e554c4c => null::list_of_ops(),
-        0x524f4d41 => roma::list_of_ops(),
-        0x424f4f4c => bool::list_of_ops(),
-
-        #[cfg(not(target_arch = "wasm32"))]
-        0x48525449 => hrti::list_of_ops(),
-        _ => return None,
-    })
+    fingerprint_match!(
+        id,
+        [
+            null,
+            roma,
+            bool,
+            #[cfg(not(target_arch = "wasm32"))]
+            hrti
+        ]
+    )
 }

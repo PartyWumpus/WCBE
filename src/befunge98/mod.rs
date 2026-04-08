@@ -23,8 +23,8 @@ use crate::{
 
 mod fingerprints;
 
-const HANDPRINT: i64 = 0x8B38669B;
-const VERSION: i64 = 100;
+const HANDPRINT: i64 = 0x57434245; // WCBE
+const VERSION: i64 = 200;
 static ID_COUNTER: AtomicI64 = AtomicI64::new(0);
 
 #[derive(Debug)]
@@ -714,7 +714,7 @@ impl Cursor {
                             return StepStatus::Normal;
                         }
                         Some(_) => {
-                            return StepStatus::Error("Invalid input for Error::InvalidNumber");
+                            return StepStatus::Error("Invalid input for &");
                         }
                     }
                 }
@@ -894,7 +894,7 @@ impl Cursor {
                         }
                     }
                 } else {
-                    return StepStatus::Error("no soss?");
+                    return StepStatus::Error("Stack stack is only has 1 stack");
                 }
             }
 
@@ -1000,7 +1000,7 @@ impl Cursor {
 
                     self.stacks.pop();
                 } else {
-                    return StepStatus::Error("no soss?");
+                    return StepStatus::Error("Stack stack is only 1 stack");
                 }
             }
 
