@@ -1,0 +1,3 @@
+Draws a smiley face :)
+
+Doesn't work in befunge98 mode because it uses the befunge-with-graphics extension that this interpreter has included by default only in bf93 mode.

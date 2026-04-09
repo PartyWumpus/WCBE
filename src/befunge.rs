@@ -93,6 +93,7 @@ pub enum StepStatus {
     Normal,
     NormalNoStep,
     Breakpoint,
+    EndProgram(i64),
     Error(&'static str),
     SyncFrame,
 }

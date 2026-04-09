@@ -444,7 +444,7 @@ impl State {
             }
 
             // halt is dealt with higher up
-            b'@' => return StepStatus::Breakpoint,
+            b'@' => return StepStatus::EndProgram(0),
 
             // -- IO output
             b'.' => {

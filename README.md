@@ -14,7 +14,7 @@ Go [to this site](https://partywumpus.github.io/befunge-editor/).
 
 ### Local
 
-If you have nix, you can run `nix develop` to get all depencencies, otherwise you should take a look inside flake.nix and figure out how to get the deps you need.
+If you have nix, you can run `nix develop` to get all dependencies, otherwise you should take a look inside flake.nix and figure out how to get the deps you need.
 
 Then run: `cargo run --release`
 
@@ -28,7 +28,7 @@ Then run: `cargo run --release`
 
 ## Features I would like to add in future:
 
-- CLI support
+- Finish CLI support
 - Manage shortcuts better instead of duplicating code all the time in app.rs
 - Breakpoints that pause on value change
 - Some of the preprocessor things from befunexec (break & watch, but not replace)
@@ -40,7 +40,7 @@ Then run: `cargo run --release`
     - Shrink containing rect when spaces are placed at limits
     - Add latin-1 parsing mode
     - Make `;` take 0 ticks
-    - Make `q` actually enter an "ended" state and show a return value
+- `q` should _show_ its return value somewhere
 - More b98 fingerprints
 
 ## Supported befunge98 fingerprints
@@ -56,4 +56,4 @@ Then run: `cargo run --release`
 
 ## Thanks
 
-Thanks [Mikescher](https://github.com/Mikescher) for the great BefunExec, and for the `Windmill` example program I stole for a preset program :)
+Thanks [Mikescher](https://github.com/Mikescher) for the great BefunExec :)

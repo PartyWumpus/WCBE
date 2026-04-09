@@ -10,7 +10,9 @@ use egui::{
 use egui_material_icons::icons;
 use include_dir::{Dir, include_dir};
 use rfd::FileHandle;
+use std::fs::File;
 use std::future::Future;
+use std::io::Read;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -21,9 +23,12 @@ use crate::befunge::{
     self, Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
     GraphicalEvent, Position, StepStatus, Value,
 };
-use crate::{befunge93, befunge93mini, befunge98};
+use crate::{Args, befunge93, befunge93mini, befunge98};
 
-static PRESETS: Dir = include_dir!("./bf_programs");
+static BF93_PRESETS: Dir = include_dir!("./bf_programs/befunge93");
+static BF98_PRESETS: Dir = include_dir!("./bf_programs/befunge98");
+static BF_PRESETS: Dir = include_dir!("./bf_programs/generic");
+
 static CURSOR_COLOR: Color32 = Color32::from_rgb(110, 200, 255);
 static PROFILE_EACH_CHAR: bool = false;
 macro_rules! icon {
@@ -163,6 +168,7 @@ enum Mode {
         speed: u8,
         error_state: Option<&'static str>,
         watch_list: HashSet<Position>,
+        run_and_exit: bool,
     },
 }
 
@@ -354,17 +360,18 @@ impl CharRenderer {
 
 enum ModalState {
     Settings,
+    Text(Box<str>),
     SetPosition(i64, i64),
     Info,
 }
 
 #[derive(Clone)]
-enum File {
+enum FileType {
     Handle(FileHandle),
     Filename(String),
 }
 
-impl File {
+impl FileType {
     fn file_name(&self) -> String {
         match self {
             Self::Handle(handle) => handle.file_name(),
@@ -387,7 +394,7 @@ pub struct App {
     cursor_pos: (i64, i64),
     popup_pos: Option<(i64, i64)>,
     char_renderer: CharRenderer,
-    file: Option<File>,
+    file: Option<FileType>,
     befunge_tooltip_open: bool,
 }
 
@@ -496,6 +503,7 @@ impl Mode {
                     speed: 5,
                     error_state: None,
                     watch_list: HashSet::default(),
+                    run_and_exit: false,
                 }
             }
             Mode::Playing {
@@ -514,12 +522,21 @@ impl Mode {
         bf_state: &mut BefungeVersion,
         running: &mut bool,
         error_state: &mut Option<&'static str>,
+        run_and_exit: bool,
         settings: &Settings,
     ) -> bool {
         let step_state = bf_state.step(settings);
         match step_state {
             StepStatus::Normal | StepStatus::NormalNoStep => false,
             StepStatus::Breakpoint => {
+                *running = false;
+                true
+            }
+            StepStatus::EndProgram(exit_code) => {
+                if run_and_exit {
+                    print!("{}", bf_state.stdout());
+                    std::process::exit(exit_code as i32);
+                }
                 *running = false;
                 true
             }
@@ -587,11 +604,18 @@ impl Mode {
                 bf_state,
                 running,
                 error_state,
+                run_and_exit,
                 ..
             } => {
                 if settings.run_until_breakpoint && *speed == 20 {
                     loop {
-                        if Self::step_befunge_inner(bf_state, running, error_state, settings) {
+                        if Self::step_befunge_inner(
+                            bf_state,
+                            running,
+                            error_state,
+                            *run_and_exit,
+                            settings,
+                        ) {
                             return;
                         }
                     }
@@ -612,7 +636,13 @@ impl Mode {
                 if time_per_step {
                     match speed {
                         ..6 => {
-                            Self::step_befunge_inner(bf_state, running, error_state, settings);
+                            Self::step_befunge_inner(
+                                bf_state,
+                                running,
+                                error_state,
+                                *run_and_exit,
+                                settings,
+                            );
                         }
                         6..=9 => {
                             for _ in 0..=*speed - 6 {
@@ -620,6 +650,7 @@ impl Mode {
                                     bf_state,
                                     running,
                                     error_state,
+                                    *run_and_exit,
                                     settings,
                                 ) {
                                     break;
@@ -632,6 +663,7 @@ impl Mode {
                                     bf_state,
                                     running,
                                     error_state,
+                                    *run_and_exit,
                                     settings,
                                 ) {
                                     break;
@@ -644,6 +676,7 @@ impl Mode {
                                     bf_state,
                                     running,
                                     error_state,
+                                    *run_and_exit,
                                     settings,
                                 ) {
                                     break 'loopy;
@@ -693,7 +726,7 @@ impl Mode {
 
 impl App {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -718,6 +751,47 @@ impl App {
             }));
         }
 
+        let fungespace = match args.filename {
+            None => {
+                if args.run_and_exit {
+                    panic!("run_and_exit can only be set if a filename is given")
+                }
+                FungeSpace::default()
+            }
+            Some(filename) => match File::open(&filename) {
+                Err(err) => panic!("File {} failed to open! {err}", filename.display()),
+                Ok(mut file) => {
+                    let mut str = String::new();
+                    file.read_to_string(&mut str)
+                        .expect("File read should work");
+                    FungeSpace::new_from_string(&str)
+                }
+            },
+        };
+
+        let mut mode = Mode::Editing {
+            undos: Vec::new(),
+            redos: Vec::new(),
+            cursor_state: CursorState::default(),
+            fungespace,
+            stdin: String::new(),
+        };
+
+        if args.run_and_exit {
+            Mode::swap_mode(&mut mode, &settings);
+            if let Mode::Playing {
+                run_and_exit,
+                running,
+                speed,
+                ..
+            } = &mut mode
+            {
+                *run_and_exit = true;
+                *running = true;
+                *speed = 20;
+            };
+        };
+
         Self {
             scene_rect: Rect::ZERO,
             text_channel: channel(),
@@ -726,13 +800,7 @@ impl App {
             cursor_pos: (0, 0),
             popup_pos: None,
             open_modal: None,
-            mode: Mode::Editing {
-                undos: Vec::new(),
-                redos: Vec::new(),
-                cursor_state: CursorState::default(),
-                fungespace: FungeSpace::default(),
-                stdin: String::new(),
-            },
+            mode,
             texture: cc.egui_ctx.load_texture(
                 "noise",
                 egui::ColorImage::example(),
@@ -794,7 +862,7 @@ impl App {
         }
 
         if let Ok((file, text)) = self.text_channel.1.try_recv() {
-            self.file = Some(File::Handle(file));
+            self.file = Some(FileType::Handle(file));
             if let Mode::Editing {
                 fungespace: FungeSpace { dirty, .. },
                 ..
@@ -915,6 +983,7 @@ impl App {
                     error_state,
                     snapshot,
                     watch_list,
+                    run_and_exit,
                     ..
                 } => {
                     ui.horizontal(|ui| {
@@ -934,6 +1003,7 @@ impl App {
                                     bf_state,
                                     running,
                                     error_state,
+                                    *run_and_exit,
                                     &self.settings,
                                 );
                             }
@@ -1112,6 +1182,7 @@ impl App {
                     snapshot,
                     error_state,
                     follow,
+                    run_and_exit,
                     ..
                 } => {
                     if e.consume_key(Modifiers::NONE, egui::Key::R) {
@@ -1151,6 +1222,7 @@ impl App {
                                 bf_state,
                                 running,
                                 error_state,
+                                *run_and_exit,
                                 &self.settings,
                             );
                         }
@@ -1188,7 +1260,7 @@ impl App {
                     let reload = e.consume_shortcut(&SHORTCUT_RELOAD_FILE);
                     // on wasm FileHandles are EITHER read or write + reusing them doesn't work great
                     // anyways so don't reuse on wasm
-                    let can_refresh_save = matches!(self.file, Some(File::Handle(_)))
+                    let can_refresh_save = matches!(self.file, Some(FileType::Handle(_)))
                         && cfg!(not(target_arch = "wasm32"));
 
                     // duplicate of code in the File menu :/
@@ -1216,7 +1288,7 @@ impl App {
 
                     if can_refresh_save
                         && save
-                        && let Some(File::Handle(file)) = self.file.clone()
+                        && let Some(FileType::Handle(file)) = self.file.clone()
                     {
                         let sender = self.text_channel.0.clone();
                         let contents = fungespace.serialize();
@@ -1232,7 +1304,7 @@ impl App {
 
                     if can_refresh_save
                         && reload
-                        && let Some(File::Handle(file)) = &self.file
+                        && let Some(FileType::Handle(file)) = &self.file
                     {
                         let sender = self.text_channel.0.clone();
                         let ctx = ui.ctx().clone();
@@ -2061,15 +2133,15 @@ impl App {
                     .clicked();
                 let reload = ui
                     .add_enabled(
-                        matches!(self.file, Some(File::Handle(_))),
+                        matches!(self.file, Some(FileType::Handle(_))),
                         egui::Button::new(icon!(icons::ICON_REPLAY, "Reload"))
                             .shortcut_text(shortcut!(SHORTCUT_RELOAD_FILE)),
                     )
                     .clicked();
                 // on wasm FileHandles are EITHER read or write + reusing them doesn't work great
                 // anyways so don't reuse on wasm
-                let can_refresh_save =
-                    matches!(self.file, Some(File::Handle(_))) && cfg!(not(target_arch = "wasm32"));
+                let can_refresh_save = matches!(self.file, Some(FileType::Handle(_)))
+                    && cfg!(not(target_arch = "wasm32"));
 
                 if save_as || (save && !can_refresh_save) {
                     let sender = self.text_channel.0.clone();
@@ -2097,7 +2169,7 @@ impl App {
 
                 if can_refresh_save
                     && save
-                    && let Some(File::Handle(file)) = self.file.clone()
+                    && let Some(FileType::Handle(file)) = self.file.clone()
                 {
                     let sender = self.text_channel.0.clone();
                     let contents = match &mut self.mode {
@@ -2115,7 +2187,7 @@ impl App {
 
                 if can_refresh_save
                     && reload
-                    && let Some(File::Handle(file)) = &self.file
+                    && let Some(FileType::Handle(file)) = &self.file
                 {
                     let sender = self.text_channel.0.clone();
                     let ctx = ui.ctx().clone();
@@ -2126,32 +2198,6 @@ impl App {
                         ctx.request_repaint();
                     });
                 }
-
-                ui.menu_button("👕 Load Preset", |ui| {
-                    for file in PRESETS.files() {
-                        if ui
-                            .button(file.path().file_stem().unwrap().to_string_lossy())
-                            .clicked()
-                        {
-                            self.file = Some(File::Filename(
-                                file.path()
-                                    .file_name()
-                                    .unwrap()
-                                    .to_string_lossy()
-                                    .to_string(),
-                            ));
-                            self.mode = Mode::Editing {
-                                undos: Vec::new(),
-                                redos: Vec::new(),
-                                cursor_state: CursorState::default(),
-                                fungespace: FungeSpace::new_from_string(
-                                    file.contents_utf8().unwrap(),
-                                ),
-                                stdin: String::new(),
-                            }
-                        }
-                    }
-                });
 
                 if !is_web {
                     ui.separator();
@@ -2169,6 +2215,10 @@ impl App {
                         ModalState::Settings => Self::settings_modal(ui, &mut self.settings),
                         ModalState::SetPosition(x, y) => Self::set_position_modal(ui, x, y),
                         ModalState::Info => Self::info_modal(ui),
+                        ModalState::Text(str) => {
+                            ui.set_width(600.0);
+                            ui.label(RichText::new(str.clone()).font(FontId::monospace(12.0)));
+                        }
                     }
 
                     ui.add_space(32.0);
@@ -2187,7 +2237,7 @@ impl App {
                 if modal.should_close() {
                     let prev_modal = self.open_modal.take();
                     match prev_modal.unwrap() {
-                        ModalState::Settings | ModalState::Info => (),
+                        ModalState::Settings | ModalState::Info | ModalState::Text(..) => (),
                         ModalState::SetPosition(x, y) => {
                             self.scene_offset = (x, y);
                             self.scene_rect.set_center(poss((0.5, 0.5)));
@@ -2469,7 +2519,9 @@ impl App {
                     });
                 });
             }
-            Mode::Editing { stdin, .. } => {
+            Mode::Editing {
+                stdin, fungespace, ..
+            } => {
                 ui.label("Version:");
                 let version = self.settings.befunge_version;
                 if ui
@@ -2500,6 +2552,47 @@ impl App {
                     self.settings.befunge_version = BefungeVersionDiscriminants::Befunge98
                 };
 
+                ui.label("Presets:");
+                for dir in BF_PRESETS.dirs() {
+                    Self::preset(
+                        ui,
+                        ".bf",
+                        dir,
+                        fungespace,
+                        &mut self.open_modal,
+                        &mut self.file,
+                    );
+                }
+
+                match self.settings.befunge_version {
+                    BefungeVersionDiscriminants::Befunge93
+                    | BefungeVersionDiscriminants::Befunge93Mini => {
+                        for dir in BF93_PRESETS.dirs() {
+                            Self::preset(
+                                ui,
+                                ".b93",
+                                dir,
+                                fungespace,
+                                &mut self.open_modal,
+                                &mut self.file,
+                            );
+                        }
+                    }
+
+                    BefungeVersionDiscriminants::Befunge98 => {
+                        for dir in BF98_PRESETS.dirs() {
+                            Self::preset(
+                                ui,
+                                ".b98",
+                                dir,
+                                fungespace,
+                                &mut self.open_modal,
+                                &mut self.file,
+                            );
+                        }
+                    }
+                };
+
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.add_space(2.0);
 
@@ -2508,6 +2601,58 @@ impl App {
                 });
             }
         }
+    }
+
+    fn preset(
+        ui: &mut egui::Ui,
+        ext: &str,
+        dir: &Dir,
+        fungespace: &mut FungeSpace,
+        open_modal: &mut Option<ModalState>,
+        open_file: &mut Option<FileType>,
+    ) {
+        ui.horizontal(|ui| {
+            let filename = dir.path().file_stem().unwrap().to_string_lossy();
+            let attribution = dir.get_file(filename.to_string() + "/Attribution").unwrap();
+            let attribution = "By ".to_string() + attribution.contents_utf8().unwrap().trim();
+
+            let file = dir
+                .get_file(filename.to_string() + "/" + &filename + ext)
+                .unwrap();
+
+            if ui
+                .button(filename.clone().replace("_", " "))
+                .on_hover_text(&attribution)
+                .clicked()
+            {
+                *open_file = Some(FileType::Filename(
+                    file.path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                ));
+
+                *fungespace = FungeSpace::new_from_string(&String::from_utf8_lossy(file.contents()))
+            }
+
+            #[allow(clippy::collapsible_if)]
+            if let Some(info) = dir.get_file(filename.to_string() + "/Info")
+                && ui.button("ℹ").on_hover_text(&attribution).clicked()
+            {
+                *open_modal = Some(ModalState::Text(
+                    (info.contents_utf8().unwrap().to_string() + "\n" + &attribution).into(),
+                ));
+            };
+
+            if let Some(license) = dir.get_file(filename.to_string() + "/License")
+                && ui.button("⚖").on_hover_text(&attribution).clicked()
+            {
+                *open_modal = Some(ModalState::Text(
+                    (license.contents_utf8().unwrap().to_string() + "\n" + &attribution).into(),
+                ));
+            };
+        });
     }
 
     fn settings_modal(ui: &mut egui::Ui, settings: &mut Settings) {

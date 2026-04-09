@@ -1,9 +1,9 @@
 use crate::{
     app::Settings,
-    befunge98::{Cursor, StateTempName},
+    befunge98::{Cursor, Env},
 };
 
-pub type FingerprintFunction = fn(&mut Cursor, &mut StateTempName, &Settings);
+pub type FingerprintFunction = fn(&mut Cursor, &mut Env, &Settings);
 pub type Fingerprint = [Option<FingerprintFunction>; 26];
 
 #[cfg(not(target_arch = "wasm32"))]

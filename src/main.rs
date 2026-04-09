@@ -6,13 +6,31 @@ mod befunge;
 mod befunge93;
 mod befunge93mini;
 mod befunge98;
+use std::path::PathBuf;
+
 pub use app::App;
+
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    /// File to open on load
+    #[arg(short, long)]
+    filename: Option<PathBuf>,
+
+    /// Should WCBE run the given program once and then exit
+    #[arg(short, long)]
+    run_and_exit: bool,
+}
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     dioxus_devtools::connect_subsecond();
+
+    let args = Args::parse();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -28,7 +46,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Wumpus' Concurrent Befunge Editor",
         native_options,
-        Box::new(|cc| Ok(Box::new(crate::App::new(cc)))),
+        Box::new(|cc| Ok(Box::new(crate::App::new(cc, args)))),
     )
 }
 
@@ -41,6 +59,11 @@ fn main() {
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
+
+    let args = Args {
+        filename: None,
+        run_and_exit: false,
+    };
 
     wasm_bindgen_futures::spawn_local(async {
         let document = web_sys::window()
@@ -58,7 +81,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(crate::App::new(cc)))),
+                Box::new(|cc| Ok(Box::new(crate::App::new(cc, args)))),
             )
             .await;
 

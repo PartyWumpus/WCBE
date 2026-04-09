@@ -33,7 +33,7 @@ pub enum StepStatus {
     NormalNoStep,
     Breakpoint,
     Die,
-    Exit,
+    EndProgram(i64),
     Error(&'static str),
     SyncFrame,
     Clone,
@@ -71,7 +71,7 @@ impl Direction {
 
 #[derive(Clone)]
 pub struct State {
-    state: StateTempName,
+    state: Env,
     cursors: Vec<Cursor>,
 }
 
@@ -79,13 +79,13 @@ impl Default for State {
     fn default() -> Self {
         Self {
             cursors: vec![Cursor::default()],
-            state: StateTempName::default(),
+            state: Env::default(),
         }
     }
 }
 
 #[derive(Clone)]
-pub struct StateTempName {
+pub struct Env {
     pub instruction_count: usize,
     pub map: FungeSpace,
 
@@ -204,7 +204,7 @@ impl FungeSpace {
     }
 }
 
-impl Default for StateTempName {
+impl Default for Env {
     fn default() -> Self {
         Self {
             instruction_count: 0,
@@ -242,7 +242,7 @@ impl Default for Cursor {
     }
 }
 
-impl StateTempName {
+impl Env {
     pub fn new_from_fungespace(fungespace: app::FungeSpace) -> Self {
         Self {
             map: FungeSpace::new_from_fungespace(fungespace),
@@ -254,7 +254,7 @@ impl StateTempName {
 impl State {
     pub fn new_from_fungespace(fungespace: app::FungeSpace) -> Self {
         Self {
-            state: StateTempName::new_from_fungespace(fungespace),
+            state: Env::new_from_fungespace(fungespace),
             ..Default::default()
         }
     }
@@ -276,7 +276,7 @@ impl State {
                 StepStatus::Die => {
                     deleted.push(i);
                 }
-                StepStatus::Exit => return befunge::StepStatus::Breakpoint,
+                StepStatus::EndProgram(val) => return befunge::StepStatus::EndProgram(val),
                 StepStatus::Error(str) => {
                     use app::InvalidOperationBehaviour as IOpBehav;
                     match settings.invalid_operation_behaviour {
@@ -389,7 +389,7 @@ impl Cursor {
         self.toss().push(val);
     }
 
-    pub fn step_position(&mut self, state: &mut StateTempName, settings: &Settings) {
+    pub fn step_position(&mut self, state: &mut Env, settings: &Settings) {
         let (x, y) = self.position;
         self.step_position_inner(state);
         if settings.pos_history.0 {
@@ -453,7 +453,7 @@ impl Cursor {
         }
     }
 
-    fn step_position_inner(&mut self, state: &StateTempName) {
+    fn step_position_inner(&mut self, state: &Env) {
         let (x, y) = self.position;
         self.position = (x + self.direction.0, y + self.direction.1);
 
@@ -490,7 +490,7 @@ impl Cursor {
         };
     }
 
-    pub fn step(&mut self, state: &mut StateTempName, settings: &Settings) -> StepStatus {
+    pub fn step(&mut self, state: &mut Env, settings: &Settings) -> StepStatus {
         state.instruction_count += 1;
         let status = self.step_inner(state, settings);
         if state.breakpoints.contains(&self.position) {
@@ -517,7 +517,7 @@ impl Cursor {
         status
     }
 
-    fn step_inner(&mut self, state: &mut StateTempName, settings: &Settings) -> StepStatus {
+    fn step_inner(&mut self, state: &mut Env, settings: &Settings) -> StepStatus {
         let op = state.map.get_nullable(self.position);
 
         if self.string_mode {
@@ -548,7 +548,7 @@ impl Cursor {
         }
     }
 
-    fn do_op(&mut self, op: u8, state: &mut StateTempName, settings: &Settings) -> StepStatus {
+    fn do_op(&mut self, op: u8, state: &mut Env, settings: &Settings) -> StepStatus {
         match op {
             b'"' => self.string_mode = true,
 
@@ -737,7 +737,6 @@ impl Cursor {
                 }
             }
 
-            // halt is dealt with higher up
             b'@' => return StepStatus::Die,
 
             // -- IO output
@@ -864,7 +863,7 @@ impl Cursor {
                 self.toss().clear();
             }
 
-            b'q' => return StepStatus::Exit,
+            b'q' => return StepStatus::EndProgram(self.pop()),
 
             b'r' => {
                 self.direction = self.direction.reverse();

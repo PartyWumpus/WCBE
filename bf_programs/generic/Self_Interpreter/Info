@@ -1,0 +1,5 @@
+Reads a Befunge-93 program from stdin and runs it. 
+
+Input program cannot be more than 20 lines high. Provide input to program in same file using ; character to separate program from input.
+
+If you give the interpreter as input to itself, be sure to decrement the 4 in the middle of *54p0 on the bottom line. Yes, you may provide it as input to itself running itself too, but decrement that number for each iteration.
