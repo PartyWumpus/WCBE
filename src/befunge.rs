@@ -203,7 +203,7 @@ pub trait FungeSpaceTrait {
 
     // TODO: make this fallible
     fn serialize(&self) -> String {
-        let height = self.program_size().1;
+        let height = self.program_size().1 + 1;
         let mut lines: Vec<Vec<char>> = vec![vec![]; height as usize];
         for ((x, y), val) in self.entries() {
             let line = &mut lines[y as usize];

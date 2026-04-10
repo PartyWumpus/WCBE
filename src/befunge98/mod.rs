@@ -269,9 +269,27 @@ impl State {
                     let mut copy = cursor.clone();
                     copy.id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                     copy.direction = copy.direction.reverse();
-                    copy.step_position(&mut self.state, settings);
+                    // TODO: make this a function
+                    if settings.skip_spaces {
+                        loop {
+                            copy.step_position(&mut self.state, settings);
+                            let op = self.state.map.get(copy.position);
+                            if op != b' ' as Value {
+                                break;
+                            }
+                        }
+                        loop {
+                            cursor.step_position(&mut self.state, settings);
+                            let op = self.state.map.get(cursor.position);
+                            if op != b' ' as Value {
+                                break;
+                            }
+                        }
+                    } else {
+                        copy.step_position(&mut self.state, settings);
+                        cursor.step_position(&mut self.state, settings);
+                    }
                     new.push(copy);
-                    cursor.step_position(&mut self.state, settings);
                 }
                 StepStatus::Die => {
                     deleted.push(i);
