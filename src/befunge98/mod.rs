@@ -15,8 +15,8 @@ use egui::ahash::HashMap;
 use crate::{
     app::{self, Settings},
     befunge::{
-        self, Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, Value, Visited,
-        WhereVisited,
+        self, Befunge, FungeSpaceTrait, GraphicalEvent, Graphics, Position, SerializationError,
+        Value, Visited, WhereVisited,
     },
     befunge98::fingerprints::{FingerprintFunction, fingerprint_from_id},
 };
@@ -1194,7 +1194,7 @@ impl Befunge for State {
         &mut self.state.breakpoints
     }
 
-    fn serialize(&self) -> String {
+    fn serialize(&self) -> Result<String, SerializationError> {
         self.state.map.serialize()
     }
 }

@@ -1,5 +1,3 @@
-use std::slice;
-
 use coarsetime::{Duration, Instant};
 use egui::{
     Color32,
@@ -12,8 +10,8 @@ use egui::ahash::HashMap;
 use crate::{
     app::{self, Settings},
     befunge::{
-        Befunge, Direction, FungeSpaceTrait, GraphicalEvent, Graphics, Position, StepStatus, Value,
-        Visited, WhereVisited,
+        Befunge, Direction, FungeSpaceTrait, GraphicalEvent, Graphics, Position,
+        SerializationError, StepStatus, Value, Visited, WhereVisited,
     },
 };
 
@@ -642,7 +640,7 @@ impl Befunge for State {
         &mut self.breakpoints
     }
 
-    fn serialize(&self) -> String {
+    fn serialize(&self) -> Result<String, SerializationError> {
         self.map.serialize()
     }
 }

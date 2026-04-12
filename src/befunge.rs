@@ -195,25 +195,34 @@ pub fn get_color_of_bf_op(op: u8) -> Option<Color32> {
     }
 }
 
+pub enum SerializationError {
+    InvalidChar((i64, i64)),
+    Newline((i64, i64)),
+}
+
 pub trait FungeSpaceTrait {
     fn set(&mut self, pos: Position, val: Value);
     fn get(&self, pos: Position) -> Value;
     fn entries(&self) -> impl Iterator<Item = (Position, Value)>;
     fn program_size(&self) -> (i64, i64);
 
-    // TODO: make this fallible
-    fn serialize(&self) -> String {
+    fn serialize(&self) -> Result<String, SerializationError> {
         let height = self.program_size().1 + 1;
         let mut lines: Vec<Vec<char>> = vec![vec![]; height as usize];
         for ((x, y), val) in self.entries() {
             let line = &mut lines[y as usize];
+            let Some(val) = char::from_u32(val as u32) else {
+                return Err(SerializationError::InvalidChar((x, y)));
+            };
+
+            if val == '\n' || val == '\r' {
+                return Err(SerializationError::Newline((x, y)));
+            }
             if line.len() <= x as usize {
                 line.extend(std::iter::repeat_n(' ', x as usize - line.len()));
-                assert_ne!(val, b'\n' as Value);
-                assert_ne!(val, b'\r' as Value);
-                line.push(char::from_u32(val as u32).expect("wawa"));
+                line.push(val);
             } else {
-                line[x as usize] = char::from_u32(val as u32).expect("wawa");
+                line[x as usize] = val;
             };
         }
         let mut out = String::new();
@@ -221,7 +230,7 @@ pub trait FungeSpaceTrait {
             out += &line.iter().collect::<String>();
             out += "\n";
         }
-        out
+        Ok(out)
     }
 }
 
@@ -371,7 +380,7 @@ pub trait Befunge {
     fn put_history(&mut self) -> &mut HashMap<Position, Instant>;
     fn breakpoints(&mut self) -> &mut HashSet<Position>;
 
-    fn serialize(&self) -> String;
+    fn serialize(&self) -> Result<String, SerializationError>;
 }
 
 #[derive(Clone, EnumDiscriminants)]

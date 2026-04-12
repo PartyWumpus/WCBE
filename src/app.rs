@@ -21,7 +21,7 @@ use egui::{Color32, Pos2, Rect, Scene, Sense, Stroke, TextureHandle, Ui, Vec2, p
 
 use crate::befunge::{
     self, Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
-    GraphicalEvent, Position, StepStatus, Value, bf93_op_info, bf98_op_info,
+    GraphicalEvent, Position, SerializationError, StepStatus, Value, bf93_op_info, bf98_op_info,
 };
 use crate::{Args, befunge93, befunge93mini, befunge98};
 
@@ -363,6 +363,7 @@ enum ModalState {
     Text(Box<str>),
     SetPosition(i64, i64),
     Info,
+    SaveFailure(SerializationError),
 }
 
 #[derive(Clone)]
@@ -1274,16 +1275,21 @@ impl App {
                         let task = task.save_file();
                         let contents = fungespace.serialize();
 
-                        let ctx = ui.ctx().clone();
-                        execute(async move {
-                            let file = task.await;
-                            if let Some(file) = file {
-                                if file.write(contents.as_bytes()).await.is_ok() {
-                                    let _ = sender.send((file, None));
-                                }
-                                ctx.request_repaint();
+                        match contents {
+                            Ok(contents) => {
+                                let ctx = ui.ctx().clone();
+                                execute(async move {
+                                    let file = task.await;
+                                    if let Some(file) = file {
+                                        if file.write(contents.as_bytes()).await.is_ok() {
+                                            let _ = sender.send((file, None));
+                                        }
+                                        ctx.request_repaint();
+                                    }
+                                });
                             }
-                        });
+                            Err(err) => self.open_modal = Some(ModalState::SaveFailure(err)),
+                        }
                     }
 
                     if can_refresh_save
@@ -1293,13 +1299,18 @@ impl App {
                         let sender = self.text_channel.0.clone();
                         let contents = fungespace.serialize();
 
-                        let ctx = ui.ctx().clone();
-                        execute(async move {
-                            if file.write(contents.as_bytes()).await.is_ok() {
-                                let _ = sender.send((file, None));
+                        match contents {
+                            Ok(contents) => {
+                                let ctx = ui.ctx().clone();
+                                execute(async move {
+                                    if file.write(contents.as_bytes()).await.is_ok() {
+                                        let _ = sender.send((file, None));
+                                    }
+                                    ctx.request_repaint();
+                                });
                             }
-                            ctx.request_repaint();
-                        });
+                            Err(err) => self.open_modal = Some(ModalState::SaveFailure(err)),
+                        }
                     }
 
                     if can_refresh_save
@@ -2117,16 +2128,20 @@ impl App {
                         Mode::Playing { bf_state, .. } => bf_state.serialize(),
                         Mode::Editing { fungespace, .. } => fungespace.serialize(),
                     };
-
-                    let ctx = ui.ctx().clone();
-                    execute(async move {
-                        let file = task.await;
-                        if let Some(file) = file {
-                            _ = file.write(contents.as_bytes()).await;
-                            let _ = sender.send((file, None));
-                            ctx.request_repaint();
+                    match contents {
+                        Ok(contents) => {
+                            let ctx = ui.ctx().clone();
+                            execute(async move {
+                                let file = task.await;
+                                if let Some(file) = file {
+                                    _ = file.write(contents.as_bytes()).await;
+                                    let _ = sender.send((file, None));
+                                    ctx.request_repaint();
+                                }
+                            });
                         }
-                    });
+                        Err(err) => self.open_modal = Some(ModalState::SaveFailure(err)),
+                    }
                 }
 
                 if can_refresh_save
@@ -2138,13 +2153,17 @@ impl App {
                         Mode::Playing { bf_state, .. } => bf_state.serialize(),
                         Mode::Editing { fungespace, .. } => fungespace.serialize(),
                     };
-
-                    let ctx = ui.ctx().clone();
-                    execute(async move {
-                        _ = file.write(contents.as_bytes()).await;
-                        let _ = sender.send((file.clone(), None));
-                        ctx.request_repaint();
-                    });
+                    match contents {
+                        Ok(contents) => {
+                            let ctx = ui.ctx().clone();
+                            execute(async move {
+                                _ = file.write(contents.as_bytes()).await;
+                                let _ = sender.send((file.clone(), None));
+                                ctx.request_repaint();
+                            });
+                        }
+                        Err(err) => self.open_modal = Some(ModalState::SaveFailure(err)),
+                    }
                 }
 
                 if can_refresh_save
@@ -2181,6 +2200,7 @@ impl App {
                             ui.set_width(600.0);
                             ui.label(RichText::new(str.clone()).font(FontId::monospace(12.0)));
                         }
+                        ModalState::SaveFailure(err) => Self::save_failure(ui, err),
                     }
 
                     ui.add_space(32.0);
@@ -2204,6 +2224,13 @@ impl App {
                             self.scene_offset = (x, y);
                             self.scene_rect.set_center(poss((0.5, 0.5)));
                         }
+                        ModalState::SaveFailure(err) => match err {
+                            SerializationError::InvalidChar(pos)
+                            | SerializationError::Newline(pos) => {
+                                self.scene_offset = pos;
+                                self.scene_rect.set_center(poss((0.5, 0.5)));
+                            }
+                        },
                     }
                 }
             }
@@ -2670,6 +2697,18 @@ impl App {
             ui.hyperlink_to("esolang wiki page", "https://esolangs.org/wiki/Befunge");
             ui.label(".");
         });
+    }
+
+    fn save_failure(ui: &mut egui::Ui, err: &SerializationError) {
+        ui.heading("Save failed");
+        match err {
+            SerializationError::InvalidChar((x, y)) => {
+                ui.label(format!("There is an invalid char at {x}, {y}"));
+            }
+            SerializationError::Newline((x, y)) => {
+                ui.label(format!("There is a newline at {x}, {y}"));
+            }
+        }
     }
 
     fn draw_char(

@@ -4,15 +4,15 @@ use egui::{
     ahash::{HashSet, HashSetExt},
 };
 use rand::Rng;
-use std::{iter, slice};
+use std::iter;
 
 use egui::ahash::HashMap;
 
 use crate::{
     app::{self, Settings},
     befunge::{
-        Befunge, Direction, GraphicalEvent, Graphics, Position, StepStatus, Value, Visited,
-        WhereVisited,
+        Befunge, Direction, GraphicalEvent, Graphics, Position, SerializationError, StepStatus,
+        Value, Visited, WhereVisited,
     },
 };
 
@@ -83,17 +83,22 @@ impl FungeSpace {
         })
     }
 
-    pub fn serialize(&self) -> String {
+    pub fn serialize(&self) -> Result<String, SerializationError> {
         let mut lines: Vec<Vec<char>> = vec![vec![]; 127];
         for ((x, y), val) in self.entries() {
             let line = &mut lines[y as usize];
+            let Some(val) = char::from_u32(val as u32) else {
+                return Err(SerializationError::InvalidChar((x, y)));
+            };
+
+            if val == '\n' || val == '\r' {
+                return Err(SerializationError::Newline((x, y)));
+            }
             if line.len() <= x as usize {
                 line.extend(iter::repeat_n(' ', x as usize - line.len()));
-                assert_ne!(val, b'\n' as i8);
-                assert_ne!(val, b'\r' as i8);
-                line.push(char::from_u32(val as u32).expect("wawa"));
+                line.push(val);
             } else {
-                line[x as usize] = char::from_u32(val as u32).expect("wawa");
+                line[x as usize] = val;
             };
         }
         let mut out = String::new();
@@ -101,7 +106,7 @@ impl FungeSpace {
             out += &line.iter().collect::<String>();
             out += "\n";
         }
-        out
+        Ok(out)
     }
 }
 
@@ -609,7 +614,7 @@ impl Befunge for State {
         &mut self.breakpoints
     }
 
-    fn serialize(&self) -> String {
+    fn serialize(&self) -> Result<String, SerializationError> {
         self.map.serialize()
     }
 }
