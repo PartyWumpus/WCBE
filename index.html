@@ -131,6 +131,18 @@
         <div class="lds-dual-ring"></div>
     </div>
 
+    <script>
+      window.on_panic = function(msg) {
+      document.body.innerHTML = `
+        <div style="padding: 2rem; font-family: monospace; color: red">
+          <h2>WCBE crashed</h2>
+          <pre>${msg}</pre>
+          <button onclick="location.reload()">Reload</button>
+        </div>
+      `;
+    };
+    </script>
+
     <!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
     <!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
     <script>

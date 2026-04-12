@@ -974,180 +974,186 @@ impl App {
         egui::CentralPanel::default().show(ui, |ui| {
             puffin::profile_scope!("central panel");
 
-            puffin::profile_scope!("control bar");
-            match &mut self.mode {
-                Mode::Playing {
-                    bf_state,
-                    running,
-                    follow,
-                    speed,
-                    error_state,
-                    snapshot,
-                    watch_list,
-                    run_and_exit,
-                    ..
-                } => {
-                    ui.horizontal(|ui| {
-                        ui.scope(|ui| {
-                            if error_state.is_some() {
-                                ui.disable();
-                            }
+            {
+                puffin::profile_scope!("control bar");
+                match &mut self.mode {
+                    Mode::Playing {
+                        bf_state,
+                        running,
+                        follow,
+                        speed,
+                        error_state,
+                        snapshot,
+                        watch_list,
+                        run_and_exit,
+                        ..
+                    } => {
+                        ui.horizontal(|ui| {
+                            ui.scope(|ui| {
+                                if error_state.is_some() {
+                                    ui.disable();
+                                }
+                                if ui
+                                    .add(
+                                        egui::Button::new(icon!(icons::ICON_STEP, "Step"))
+                                            .shortcut_text(icons::ICON_ARROW_RIGHT_ALT),
+                                    )
+                                    .clicked()
+                                {
+                                    *running = false;
+                                    Mode::step_befunge_inner(
+                                        bf_state,
+                                        running,
+                                        error_state,
+                                        *run_and_exit,
+                                        &self.settings,
+                                    );
+                                }
+                                if ui
+                                    .add(
+                                        egui::Button::new(if *running {
+                                            icon!(icons::ICON_PAUSE, "Pause")
+                                        } else {
+                                            icon!(icons::ICON_PLAY_ARROW, "Play")
+                                        })
+                                        .shortcut_text(icons::ICON_SPACE_BAR),
+                                    )
+                                    .clicked()
+                                {
+                                    *running = !(*running);
+                                };
+                            });
                             if ui
                                 .add(
-                                    egui::Button::new(icon!(icons::ICON_STEP, "Step"))
-                                        .shortcut_text(icons::ICON_ARROW_RIGHT_ALT),
+                                    egui::Button::new(icon!(icons::ICON_REPLAY, "Reset"))
+                                        .shortcut_text("R"),
                                 )
                                 .clicked()
                             {
                                 *running = false;
-                                Mode::step_befunge_inner(
-                                    bf_state,
-                                    running,
-                                    error_state,
-                                    *run_and_exit,
-                                    &self.settings,
-                                );
-                            }
+                                *error_state = None;
+                                // teeny bit wasteful
+                                let breakpoints = bf_state.breakpoints().clone();
+                                **bf_state = match self.settings.befunge_version {
+                                    BefungeVersionDiscriminants::Befunge93 => {
+                                        BefungeVersion::Befunge93(
+                                            befunge93::State::new_from_fungespace(
+                                                snapshot.0.clone(),
+                                            ),
+                                        )
+                                    }
+                                    BefungeVersionDiscriminants::Befunge93Mini => {
+                                        BefungeVersion::Befunge93Mini(
+                                            befunge93mini::State::new_from_fungespace(
+                                                snapshot.0.clone(),
+                                            ),
+                                        )
+                                    }
+                                    BefungeVersionDiscriminants::Befunge98 => {
+                                        BefungeVersion::Befunge98(
+                                            befunge98::State::new_from_fungespace(
+                                                snapshot.0.clone(),
+                                            ),
+                                        )
+                                    }
+                                };
+                                *bf_state.breakpoints() = breakpoints;
+                                *bf_state.stdin() = snapshot.1.clone();
+                            };
+
+                            checkbox_with_underline(ui, follow, "Follow").on_hover_text(
+                                "Makes the camera follow the instruction pointer automatically",
+                            );
+
+                            ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
+                        });
+
+                        if !watch_list.is_empty() {
+                            ui.horizontal(|ui| {
+                                for x in watch_list.iter() {
+                                    ui.group(|ui| {
+                                        ui.add(egui::Label::new(
+                                            RichText::new(format!("({:03}, {:03})", x.0, x.1))
+                                                .text_style(TextStyle::Monospace),
+                                        ));
+                                        ui.label(format!("{}", bf_state.get(*x)));
+                                    });
+                                }
+                            });
+                        }
+
+                        if self.settings.display_debug_info {
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label("execution state");
+                                    ui.label(format!("{:?}", error_state));
+                                });
+                                ui.vertical(|ui| {
+                                    ui.label("step");
+                                    ui.label(bf_state.instruction_count().to_string());
+                                });
+                                ui.vertical(|ui| {
+                                    ui.label("location");
+                                    ui.label(format!("{:?}", bf_state.cursor_positions()));
+                                });
+                                ui.vertical(|ui| {
+                                    ui.label("direction");
+                                    ui.label(format!("{:?}", bf_state.cursor_direction()));
+                                });
+                                ui.vertical(|ui| {
+                                    ui.label("string mode");
+                                    ui.label(format!("{:?}", bf_state.string_mode()));
+                                });
+                            });
+                        }
+                    }
+                    Mode::Editing {
+                        cursor_state,
+                        undos,
+                        redos,
+                        fungespace,
+                        ..
+                    } => {
+                        ui.horizontal(|ui| {
                             if ui
-                                .add(
-                                    egui::Button::new(if *running {
-                                        icon!(icons::ICON_PAUSE, "Pause")
-                                    } else {
-                                        icon!(icons::ICON_PLAY_ARROW, "Play")
-                                    })
-                                    .shortcut_text(icons::ICON_SPACE_BAR),
+                                .add_enabled(
+                                    !undos.is_empty(),
+                                    egui::Button::new(icon!(icons::ICON_UNDO, "Undo"))
+                                        .shortcut_text(shortcut!(SHORTCUT_UNDO)),
                                 )
                                 .clicked()
                             {
-                                *running = !(*running);
+                                Mode::undo(fungespace, undos, redos);
                             };
-                        });
-                        if ui
-                            .add(
-                                egui::Button::new(icon!(icons::ICON_REPLAY, "Reset"))
-                                    .shortcut_text("R"),
-                            )
-                            .clicked()
-                        {
-                            *running = false;
-                            *error_state = None;
-                            // teeny bit wasteful
-                            let breakpoints = bf_state.breakpoints().clone();
-                            **bf_state = match self.settings.befunge_version {
-                                BefungeVersionDiscriminants::Befunge93 => {
-                                    BefungeVersion::Befunge93(
-                                        befunge93::State::new_from_fungespace(snapshot.0.clone()),
-                                    )
-                                }
-                                BefungeVersionDiscriminants::Befunge93Mini => {
-                                    BefungeVersion::Befunge93Mini(
-                                        befunge93mini::State::new_from_fungespace(
-                                            snapshot.0.clone(),
-                                        ),
-                                    )
-                                }
-                                BefungeVersionDiscriminants::Befunge98 => {
-                                    BefungeVersion::Befunge98(
-                                        befunge98::State::new_from_fungespace(snapshot.0.clone()),
-                                    )
-                                }
+
+                            if ui
+                                .add_enabled(
+                                    !redos.is_empty(),
+                                    egui::Button::new(icon!(icons::ICON_REDO, "Redo"))
+                                        .shortcut_text(shortcut!(SHORTCUT_REDO)),
+                                )
+                                .clicked()
+                            {
+                                Mode::redo(fungespace, undos, redos);
                             };
-                            *bf_state.breakpoints() = breakpoints;
-                            *bf_state.stdin() = snapshot.1.clone();
-                        };
-
-                        checkbox_with_underline(ui, follow, "Follow").on_hover_text(
-                            "Makes the camera follow the instruction pointer automatically",
-                        );
-
-                        ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
-                    });
-
-                    if !watch_list.is_empty() {
-                        ui.horizontal(|ui| {
-                            for x in watch_list.iter() {
-                                ui.group(|ui| {
-                                    ui.add(egui::Label::new(
-                                        RichText::new(format!("({:03}, {:03})", x.0, x.1))
-                                            .text_style(TextStyle::Monospace),
-                                    ));
-                                    ui.label(format!("{}", bf_state.get(*x)));
-                                });
-                            }
-                        });
-                    }
-
-                    if self.settings.display_debug_info {
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.label("execution state");
-                                ui.label(format!("{:?}", error_state));
+                            ui.separator();
+                            ui.label("Cursor direction:");
+                            ui.label(match cursor_state.direction {
+                                Direction::North => "⬆",
+                                Direction::South => "⬇",
+                                Direction::East => "➡",
+                                Direction::West => "⬅",
                             });
-                            ui.vertical(|ui| {
-                                ui.label("step");
-                                ui.label(bf_state.instruction_count().to_string());
-                            });
-                            ui.vertical(|ui| {
-                                ui.label("location");
-                                ui.label(format!("{:?}", bf_state.cursor_positions()));
-                            });
-                            ui.vertical(|ui| {
-                                ui.label("direction");
-                                ui.label(format!("{:?}", bf_state.cursor_direction()));
-                            });
-                            ui.vertical(|ui| {
-                                ui.label("string mode");
-                                ui.label(format!("{:?}", bf_state.string_mode()));
+
+                            ui.label("Cursor mode:");
+                            ui.label(if cursor_state.string_mode {
+                                "String"
+                            } else {
+                                "Normal"
                             });
                         });
                     }
-                }
-                Mode::Editing {
-                    cursor_state,
-                    undos,
-                    redos,
-                    fungespace,
-                    ..
-                } => {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(
-                                !undos.is_empty(),
-                                egui::Button::new(icon!(icons::ICON_UNDO, "Undo"))
-                                    .shortcut_text(shortcut!(SHORTCUT_UNDO)),
-                            )
-                            .clicked()
-                        {
-                            Mode::undo(fungespace, undos, redos);
-                        };
-
-                        if ui
-                            .add_enabled(
-                                !redos.is_empty(),
-                                egui::Button::new(icon!(icons::ICON_REDO, "Redo"))
-                                    .shortcut_text(shortcut!(SHORTCUT_REDO)),
-                            )
-                            .clicked()
-                        {
-                            Mode::redo(fungespace, undos, redos);
-                        };
-                        ui.separator();
-                        ui.label("Cursor direction:");
-                        ui.label(match cursor_state.direction {
-                            Direction::North => "⬆",
-                            Direction::South => "⬇",
-                            Direction::East => "➡",
-                            Direction::West => "⬅",
-                        });
-
-                        ui.label("Cursor mode:");
-                        ui.label(if cursor_state.string_mode {
-                            "String"
-                        } else {
-                            "Normal"
-                        });
-                    });
                 }
             }
 

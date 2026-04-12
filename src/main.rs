@@ -12,6 +12,21 @@ pub use app::App;
 
 use clap::Parser;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    fn on_panic(msg: &str);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn panic_hook(info: &std::panic::PanicHookInfo) {
+    let msg = info.to_string();
+    on_panic(&msg);
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
@@ -53,6 +68,7 @@ fn main() -> eframe::Result {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    std::panic::set_hook(Box::new(panic_hook));
     use eframe::wasm_bindgen::JsCast as _;
 
     // Redirect `log` message to `console.log` and friends:
