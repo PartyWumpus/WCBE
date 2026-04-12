@@ -12,6 +12,7 @@ mod hrti;
 mod bool;
 mod modu;
 mod null;
+mod refc;
 mod roma;
 
 #[macro_export]
@@ -68,6 +69,7 @@ pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
             roma,
             bool,
             modu,
+            refc,
             #[cfg(not(target_arch = "wasm32"))]
             hrti
         ]

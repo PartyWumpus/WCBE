@@ -99,9 +99,11 @@ pub struct Env {
     pub input_buffer: String,
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub hrti_start: std::time::Instant,
+    hrti_start: std::time::Instant,
     #[cfg(not(target_arch = "wasm32"))]
-    pub hrti_marks: HashMap<i64, std::time::Instant>,
+    hrti_marks: HashMap<i64, std::time::Instant>,
+
+    refc_vectors: Vec<(i64, i64)>,
 }
 
 #[derive(Clone)]
@@ -223,6 +225,8 @@ impl Default for Env {
             hrti_marks: HashMap::default(),
             #[cfg(not(target_arch = "wasm32"))]
             hrti_start: std::time::Instant::now(),
+
+            refc_vectors: vec![],
         }
     }
 }
