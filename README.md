@@ -36,10 +36,10 @@ Then run: `cargo run --release`
 - Undo in play mode
 - Profile file threads
 - Configurable "what to do on # at program edge"
+- Reduce crashes/infinite loops in b98
 - Be fully conformant with mycology.b98 (almost done)
     - Shrink containing rect when spaces are placed at limits
     - Add latin-1 parsing mode
-    - Make `;` take 0 ticks
 - `q` should _show_ its return value somewhere
 - More b98 fingerprints
 

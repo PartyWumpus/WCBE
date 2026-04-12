@@ -515,21 +515,41 @@ impl Cursor {
             return StepStatus::Breakpoint;
         }
         if settings.skip_spaces {
-            let mut pos = None;
-            loop {
-                if state.map.get(self.position) == b' ' as Value {
-                    pos = Some(self.position);
-                    // small visual bug because it steps onto the last space
-                    // TODO: add a peek position
-                    self.step_position(state, settings);
-                } else {
-                    break;
+            if self.string_mode {
+                let mut pos = None;
+                loop {
+                    let val = state.map.get(self.position);
+                    if val == b' ' as Value {
+                        pos = Some(self.position);
+                        // small visual bug because it steps onto the last space
+                        // TODO: add a peek position
+                        self.step_position(state, settings);
+                    } else {
+                        break;
+                    }
                 }
-            }
-            if self.string_mode
-                && let Some(pos) = pos
-            {
-                self.position = pos;
+                if let Some(pos) = pos {
+                    self.position = pos;
+                }
+            } else {
+                loop {
+                    let val = state.map.get(self.position);
+                    if val == b' ' as Value {
+                        self.step_position(state, settings);
+                    } else if val == b';' as Value {
+                        self.step_position(state, settings);
+                        loop {
+                            let op = state.map.get(self.position);
+                            if op == b';' as Value {
+                                self.step_position(state, settings);
+                                break;
+                            }
+                            self.step_position_inner(state);
+                        }
+                    } else {
+                        break;
+                    }
+                }
             }
         };
         status
@@ -855,6 +875,9 @@ impl Cursor {
                 loop {
                     self.step_position_inner(state);
                     op = state.map.get(self.position);
+                    // this behaviour is kind of weird, it means for
+                    // k;a;b
+                    // we run 'a' not 'b' but apparently that's the spec
                     if op != b' ' as Value && op != b';' as Value {
                         break;
                     }
@@ -872,6 +895,8 @@ impl Cursor {
                             }
                         };
                     }
+                } else {
+                    return StepStatus::Error("Invalid operation");
                 }
 
                 return StepStatus::Normal;

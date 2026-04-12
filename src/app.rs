@@ -21,7 +21,7 @@ use egui::{Color32, Pos2, Rect, Scene, Sense, Stroke, TextureHandle, Ui, Vec2, p
 
 use crate::befunge::{
     self, Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
-    GraphicalEvent, Position, StepStatus, Value,
+    GraphicalEvent, Position, StepStatus, Value, bf93_op_info, bf98_op_info,
 };
 use crate::{Args, befunge93, befunge93mini, befunge98};
 
@@ -1973,69 +1973,31 @@ impl App {
                 let cursor_op = match &self.mode {
                     Mode::Editing { fungespace, .. } => fungespace.get(self.cursor_pos),
                     Mode::Playing { bf_state, .. } => bf_state.get(self.cursor_pos)
-                } as u8;
-                if self.befunge_tooltip_open && self.popup_pos.is_none() && cursor_op != b' ' {
+                }.try_into();
+                if self.befunge_tooltip_open && self.popup_pos.is_none() && let Ok(cursor_op) = cursor_op && cursor_op != b' ' {
                     puffin::profile_scope!("tooltip");
                     let transform = ui
                         .layer_transform_to_global(ui.layer_id())
                         .unwrap_or(TSTransform::IDENTITY);
+                    let description = match self.settings.befunge_version {
+                        BefungeVersionDiscriminants::Befunge93 | BefungeVersionDiscriminants::Befunge93Mini => bf93_op_info(cursor_op),
+                        BefungeVersionDiscriminants::Befunge98 => bf98_op_info(cursor_op)
+                    };
 
-                    egui::Popup::new(
-                        Id::new("befunge tooltip"),
-                        ui.ctx().clone(),
-                        transform.mul_pos(poss((
-                            (self.cursor_pos.0 - self.scene_offset.0) as f32 + 0.75,
-                            (self.cursor_pos.1 - self.scene_offset.1) as f32 + 0.75,
-                        ))),
-                        LayerId::background(),
-                    ).show(|ui| {
-
-                        let description = match cursor_op {
-                            b'0'..=b'9' => "Loads a number onto the stack",
-                            b'+' => "Pops a then b, then pushes b + a",
-                            b'-' => "Pops a then b, then pushes b - a",
-                            b'*' => "Pops a then b, then pushes b * a",
-                            b'/' => "Pops a then b, then pushes b / a (Integer division)",
-                            b'%' => "Pops a then b, then pushes b % a (Remainder)",
-                            b'`' => "Pops a then b, then pushes b > a (1 if true, 0 if false)",
-
-                            b'"' => "Enters 'string mode', all following characters just push their unicode codepoint value until the next \"",
-                            b'\\' => "Swaps the top 2 values on the stack",
-                            b'!' => "Pops a value. If it is 0, 1 is pushed. Otherwise 0 is pushed. (Logical not)",
-                            b':' => "Duplicates the top value on the stack",
-                            b'$' => "Pops a, then discards it",
-
-                            b'>' | b'<' | b'^' | b'v' => "Changes instruction pointer direction",
-                            b'#' => "Skips the next operation",
-                            b'?' => "Points the instruction pointer in a random direction",
-                            b'_' => "Pops a value. If it is 0, point the instruction pointer right. Otherwise go left.",
-                            b'|' => "Pops a value. If it is 0, point the instruction pointer down. Otherwise go up.",
-
-                            b'p' => "Pops x, y and val. Places val in the position (x,y) in the program's space",
-                            b'g' => "Pops x and y. Pushes the value of the position (x,y) in the program's space. 0 if out of bounds",
-
-                            b'&' => "Pushes an integer from stdin",
-                            b'~' => "Pushes a character from stdin",
-                            b'.' => "Pops a value and prints it as an integer",
-                            b',' => "Pops a value and prints it as a unicode character",
-                            b'@' => "Ends the program",
-
-                            b's' => "(Graphics) Pops y then x. Creates a screen with those dimensions",
-                            b'f' => "(Graphics) Pops r, g and b. Sets the drawing colour to rgb(r, g, b)",
-                            b'x' => "(Graphics) Pops y then x. Sets the pixel on the screen position (x,y) to the current drawing colour",
-                            b'c' => "(Graphics) Fills the screen with the current drawing colour",
-                            b'u' => "(Graphics) Pause the interpreter for one frame to sync drawing",
-                            b'l' => "(Graphics) Pops y2, x2, y1, x1. Draws a line from (x1, y1) to (x2, y2)",
-                            b'z' => "(Graphics) Pushes a screen event. Info TODO",
-
-                            b' ' => unreachable!(),
-                            _ => "Invalid operation"
-
-
-                        };
-                        ui.set_max_width(250.0);
-                        ui.label(description)
-                    });
+                    if let Some(description) = description {
+                        egui::Popup::new(
+                            Id::new("befunge tooltip"),
+                            ui.ctx().clone(),
+                            transform.mul_pos(poss((
+                                (self.cursor_pos.0 - self.scene_offset.0) as f32 + 0.75,
+                                (self.cursor_pos.1 - self.scene_offset.1) as f32 + 0.75,
+                            ))),
+                            LayerId::background(),
+                        ).show(|ui| {
+                            ui.set_max_width(250.0);
+                            ui.label(description);
+                        });
+                    }
 
                 }
 

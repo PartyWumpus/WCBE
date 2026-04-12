@@ -225,6 +225,128 @@ pub trait FungeSpaceTrait {
     }
 }
 
+pub fn bf93_op_info(op: u8) -> Option<&'static str> {
+    Some(match op {
+        b'0'..=b'9' => "Loads a number onto the stack",
+        b'+' => "Pops a then b, then pushes b + a",
+        b'-' => "Pops a then b, then pushes b - a",
+        b'*' => "Pops a then b, then pushes b * a",
+        b'/' => "Pops a then b, then pushes b / a (Integer division)",
+        b'%' => "Pops a then b, then pushes b % a (Remainder)",
+        b'`' => "Pops a then b, then pushes b > a (1 if true, 0 if false)",
+
+        b'"' => {
+            "Enters 'string mode', all following characters just push their unicode codepoint value until the next \""
+        }
+        b'\\' => "Swaps the top 2 values on the stack",
+        b'!' => "Pops a value. If it is 0, 1 is pushed. Otherwise 0 is pushed. (Logical not)",
+        b':' => "Duplicates the top value on the stack",
+        b'$' => "Pops a, then discards it",
+
+        b'>' | b'<' | b'^' | b'v' => "Changes instruction pointer direction",
+        b'#' => "Skips the next operation",
+        b'?' => "Points the instruction pointer in a random direction",
+        b'_' => "Pops a value. If it is 0, point the instruction pointer right. Otherwise go left.",
+        b'|' => "Pops a value. If it is 0, point the instruction pointer down. Otherwise go up.",
+
+        b'p' => "Pops x, y and val. Places val in the position (x,y) in the program's space",
+        b'g' => {
+            "Pops x and y. Pushes the value of the position (x,y) in the program's space. 0 if out of bounds"
+        }
+
+        b'&' => "Pushes an integer from stdin",
+        b'~' => "Pushes a character from stdin",
+        b'.' => "Pops a value and prints it as an integer",
+        b',' => "Pops a value and prints it as a unicode character",
+        b'@' => "Ends the program",
+
+        b's' => "(Graphics) Pops y then x. Creates a screen with those dimensions",
+        b'f' => "(Graphics) Pops r, g and b. Sets the drawing colour to rgb(r, g, b)",
+        b'x' => {
+            "(Graphics) Pops y then x. Sets the pixel on the screen position (x,y) to the current drawing colour"
+        }
+        b'c' => "(Graphics) Fills the screen with the current drawing colour",
+        b'u' => "(Graphics) Pause the interpreter for one frame to sync drawing",
+        b'l' => "(Graphics) Pops y2, x2, y1, x1. Draws a line from (x1, y1) to (x2, y2)",
+        b'z' => "(Graphics) Pushes a screen event. Info TODO",
+
+        _ => return None,
+    })
+}
+
+pub fn bf98_op_info(op: u8) -> Option<&'static str> {
+    Some(match op {
+        b'0'..=b'9' | b'a'..=b'f' => "Loads a number onto the stack",
+        b'+' => "Pops a then b, then pushes b + a",
+        b'-' => "Pops a then b, then pushes b - a",
+        b'*' => "Pops a then b, then pushes b * a",
+        b'/' => "Pops a then b, then pushes b / a (Integer division)",
+        b'%' => "Pops a then b, then pushes b % a (Remainder)",
+        b'`' => "Pops a then b, then pushes b > a (1 if true, 0 if false)",
+
+        b'"' => {
+            "Enters 'string mode', all following characters just push their unicode codepoint value until the next \""
+        }
+        b'\\' => "Swaps the top 2 values on the stack",
+        b'!' => "Pops a value. If it is 0, 1 is pushed. Otherwise 0 is pushed. (Logical not)",
+
+        b':' => "Duplicates the top value on the stack",
+        b'$' => "Pops a, then discards it",
+        b'n' => "Clears the stack",
+        b'u' => {
+            "Pops a value. Transfers that many values from the top stack to the second top stack on the stack stack"
+        }
+        b'k' => "Pops a value. Executes the next cell that many times",
+
+        b'>' | b'<' | b'^' | b'v' => "Changes instruction pointer direction",
+        b'#' => "Skips the next operation",
+        b'?' => "Points the instruction pointer in a random direction",
+        b'_' => "Pops a value. If it is 0, point the instruction pointer right. Otherwise go left.",
+        b'|' => "Pops a value. If it is 0, point the instruction pointer down. Otherwise go up.",
+        b'w' => "Pops a then b. If a>b turns right, if a<b turns left, if a=b continues forwards",
+        b']' => "Turns right (90 degrees)",
+        b'[' => "Turns left (90 degrees)",
+        b'j' => "Pops a value. Jumps forwards that many cells",
+        b'r' => "Turns around (180 degrees)",
+        b'x' => {
+            "Pops y then x. Sets the direction to (x,y). This allows for non-cardinal directions, like (3,2)"
+        }
+
+        b'p' => "Pops x, y and val. Places val in the position (x,y) in the program's space",
+        b'g' => "Pops x and y. Pushes the value of the position (x,y) in the program's space",
+        b's' => "Pops a value. Places it in the position in front of this instruction.",
+        b'\'' => "Loads the value of the next character onto the stack, and skips over it",
+
+        b'&' => "Pushes an integer from stdin",
+        b'~' => "Pushes a character from stdin",
+        b'.' => "Pops a value and prints it as an integer",
+        b',' => "Pops a value and prints it as a unicode character",
+        b'@' => "Kills this IP. Ends the program if it is the only one",
+        b'q' => "Ends the program",
+
+        b';' => "Skips all operations until the next ;",
+
+        b'(' => "Loads a fingerprint. Go read the befunge98 spec",
+        b')' => "Unloads a fingerprint. Go read the befunge98 spec",
+        b'A'..=b'Z' => "Fingerprint instruction",
+
+        b'{' => {
+            "Pops a value N. Makes a new stack on the top of the stack stack. Transfers N values from the previous stack onto the new one. Offsets all g/p operations to here. Go read the befunge98 spec"
+        }
+        b'}' => {
+            "Pops a value. Transfers that many values from the top of the stack stack to the second top of the stack stack. Deletes the top of the stack stack. Resets the g/p offset. Go read the befunge98 spec"
+        }
+
+        b'y' => "Spits a bunch of sysinfo out. Go read the befunge98 spec",
+        b't' => "Splits IP in two. One continues forwards, and one reflects. Stack is copied",
+        b'=' => "Executes a string a sh command. Not implemented",
+        b'i' => "Loads a file from your filesytem into fungespace. Not implemented",
+        b'o' => "Writes a file from fungespace to your filesystem. Not implemented",
+
+        _ => return None,
+    })
+}
+
 #[enum_dispatch]
 pub trait Befunge {
     fn get(&self, pos: Position) -> Value;

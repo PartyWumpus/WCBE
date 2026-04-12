@@ -10,6 +10,7 @@ pub type Fingerprint = [Option<FingerprintFunction>; 26];
 mod hrti;
 
 mod bool;
+mod modu;
 mod null;
 mod roma;
 
@@ -66,6 +67,7 @@ pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
             null,
             roma,
             bool,
+            modu,
             #[cfg(not(target_arch = "wasm32"))]
             hrti
         ]
