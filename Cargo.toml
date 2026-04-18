@@ -5,6 +5,16 @@ authors = ["PartyWumpus <evie@partywump.us>"]
 edition = "2024"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 
+[lib]
+name = "embeded_befunge"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "WCBE"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O4', '--enable-bulk-memory', '--enable-nontrapping-float-to-int']
+
 [package.metadata.docs.rs]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
@@ -39,13 +49,13 @@ strum_macros = "0.28.0"
 strum = "0.28.0"
 
 # in theory these can be removed from the web build. TODO: do that
-clap = { version = "4.5.37", features = ["derive"] }
 puffin_egui = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
 puffin = { git = "https://github.com/PartyWumpus/puffin.git", branch = "egui-0.34" }
 subsecond = "0.7.3"
 paste = "1.0.15"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+clap = { version = "4.5.37", features = ["derive"] }
 dioxus-devtools = "0.7.3"
 env_logger = "0.11.8"
 
@@ -55,6 +65,7 @@ getrandom = { version = "0.2", features = ["js"] }
 wasm-bindgen = "0.2.118"
 wasm-bindgen-futures = "0.4.50"
 web-sys = "0.3.70"              # to access the DOM (to hide the loading text)
+js-sys = "0.3.95"
 
 [profile.release]
 lto="fat"

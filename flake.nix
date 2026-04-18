@@ -20,6 +20,7 @@
             dioxus-cli
             lld
             trunk
+            wasm-pack
 
             # misc. libraries
             openssl

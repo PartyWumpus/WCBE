@@ -381,6 +381,8 @@ pub trait Befunge {
     fn breakpoints(&mut self) -> &mut HashSet<Position>;
 
     fn serialize(&self) -> Result<String, SerializationError>;
+
+    fn debug_set_position(&mut self, pos: Position);
 }
 
 #[derive(Clone, EnumDiscriminants)]

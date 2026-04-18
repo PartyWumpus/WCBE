@@ -18,6 +18,9 @@ If you have nix, you can run `nix develop` to get all dependencies, otherwise yo
 
 Then run: `cargo run --release`
 
+For hot reloading: `dx serve --hotpatch --target x86_64-unknown-linux-gnu --bin WCBE`
+For web build: `trunk build --release`
+
 ## Features
 
 - All of befunge93

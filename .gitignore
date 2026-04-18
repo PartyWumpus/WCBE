@@ -4,6 +4,9 @@
 # trunk output folder
 dist
 
+# wasm-pack output folder
+pkg/
+
 # Rust compile target directories:
 target
 target_ra

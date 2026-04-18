@@ -643,4 +643,8 @@ impl Befunge for State {
     fn serialize(&self) -> Result<String, SerializationError> {
         self.map.serialize()
     }
+
+    fn debug_set_position(&mut self, pos: Position) {
+        self.position = pos
+    }
 }

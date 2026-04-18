@@ -10,9 +10,7 @@ use egui::{
 use egui_material_icons::icons;
 use include_dir::{Dir, include_dir};
 use rfd::FileHandle;
-use std::fs::File;
 use std::future::Future;
-use std::io::Read;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -23,7 +21,7 @@ use crate::befunge::{
     self, Befunge, BefungeVersion, BefungeVersionDiscriminants, Direction, FungeSpaceTrait,
     GraphicalEvent, Position, SerializationError, StepStatus, Value, bf93_op_info, bf98_op_info,
 };
-use crate::{Args, befunge93, befunge93mini, befunge98};
+use crate::{befunge93, befunge93mini, befunge98};
 
 static BF93_PRESETS: Dir = include_dir!("./bf_programs/befunge93");
 static BF98_PRESETS: Dir = include_dir!("./bf_programs/befunge98");
@@ -68,6 +66,18 @@ const NAMES: ModifierNames = ModifierNames {
     mac_alt: "Option",
     concat: "+",
 };
+
+#[derive(Default)]
+pub struct StartConfig {
+    pub contents: Option<String>,
+    pub start_in_run_mode: bool,
+    pub run_and_exit: bool,
+    pub hide_toolbar: bool,
+    pub hide_extra: bool,
+    pub fix_camera_to_program: bool,
+    pub starting_position: Option<(i64, i64)>,
+    pub settings: Option<Settings>,
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct CursorState {
@@ -172,14 +182,14 @@ enum Mode {
     },
 }
 
-#[derive(serde::Deserialize, serde::Serialize, PartialEq)]
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone)]
 pub enum InvalidOperationBehaviour {
     Reflect,
     Halt,
     Ignore,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct Settings {
     pub pos_history: (bool, [u8; 3]),
     pub get_history: (bool, [u8; 3]),
@@ -198,7 +208,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             pos_history: (true, [128, 0, 128]),
-            get_history: (false, [255, 0, 0]),
+            get_history: (true, [255, 0, 0]),
             put_history: (true, [0, 255, 0]),
             skip_spaces: false,
             display_debug_info: false,
@@ -388,6 +398,7 @@ pub struct App {
         Receiver<(FileHandle, Option<Vec<u8>>)>,
     ),
     settings: Settings,
+    config: StartConfig,
     mode: Mode,
     scene_rect: Rect,
     open_modal: Option<ModalState>,
@@ -727,7 +738,7 @@ impl Mode {
 
 impl App {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, config: StartConfig) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -737,9 +748,10 @@ impl App {
 
         egui_material_icons::initialize(&cc.egui_ctx);
 
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        let settings = if let Some(storage) = cc.storage {
+        let settings = if let Some(settings) = &config.settings {
+            settings.clone()
+        } else if let Some(storage) = cc.storage {
+            // Load previous app state
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Settings::default()
@@ -752,22 +764,9 @@ impl App {
             }));
         }
 
-        let fungespace = match args.filename {
-            None => {
-                if args.run_and_exit {
-                    panic!("run_and_exit can only be set if a filename is given")
-                }
-                FungeSpace::default()
-            }
-            Some(filename) => match File::open(&filename) {
-                Err(err) => panic!("File {} failed to open! {err}", filename.display()),
-                Ok(mut file) => {
-                    let mut str = String::new();
-                    file.read_to_string(&mut str)
-                        .expect("File read should work");
-                    FungeSpace::new_from_string(&str)
-                }
-            },
+        let fungespace = match &config.contents {
+            None => FungeSpace::default(),
+            Some(contents) => FungeSpace::new_from_string(contents),
         };
 
         let mut mode = Mode::Editing {
@@ -778,25 +777,36 @@ impl App {
             stdin: String::new(),
         };
 
-        if args.run_and_exit {
+        if config.start_in_run_mode {
             Mode::swap_mode(&mut mode, &settings);
+
             if let Mode::Playing {
                 run_and_exit,
                 running,
                 speed,
+                bf_state,
                 ..
             } = &mut mode
             {
-                *run_and_exit = true;
-                *running = true;
-                *speed = 20;
-            };
+                if let Some(pos) = config.starting_position {
+                    bf_state.debug_set_position(pos);
+                }
+
+                if config.run_and_exit {
+                    *speed = 20;
+                    *running = true;
+                    *run_and_exit = true
+                };
+            } else {
+                unreachable!()
+            }
         };
 
         Self {
             scene_rect: Rect::ZERO,
             text_channel: channel(),
             settings,
+            config,
             scene_offset: (0, 0),
             cursor_pos: (0, 0),
             popup_pos: None,
@@ -884,11 +894,14 @@ impl App {
             }
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ui, |ui| {
-            self.menu_bar(ui);
-        });
+        if !self.config.hide_toolbar {
+            egui::TopBottomPanel::top("top_panel").show(ui, |ui| {
+                self.menu_bar(ui);
+            });
+        }
 
-        egui::TopBottomPanel::bottom("bottom_panel").show(ui, |ui| {
+        if !self.config.hide_extra {
+            egui::TopBottomPanel::bottom("bottom_panel").show(ui, |ui| {
             puffin::profile_scope!("bottom panel");
             egui::MenuBar::new().ui(ui, |ui| {
                 // prob should figure out a better way of doing this instead of hardcoding 750
@@ -963,6 +976,7 @@ impl App {
                 });
             });
         });
+        }
 
         egui::SidePanel::left("left_panel")
             .resizable(false)
@@ -1059,13 +1073,19 @@ impl App {
                                 };
                                 *bf_state.breakpoints() = breakpoints;
                                 *bf_state.stdin() = snapshot.1.clone();
+
+                                if let Some(pos) = self.config.starting_position {
+                                    bf_state.debug_set_position(pos);
+                                }
                             };
 
-                            checkbox_with_underline(ui, follow, "Follow").on_hover_text(
-                                "Makes the camera follow the instruction pointer automatically",
-                            );
+                            if !self.config.hide_extra {
+                                checkbox_with_underline(ui, follow, "Follow").on_hover_text(
+                                    "Makes the camera follow the instruction pointer automatically",
+                                );
 
-                            ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
+                                ui.add(egui::Slider::new(speed, 1..=20).text("speed"));
+                            }
                         });
 
                         if !watch_list.is_empty() {
@@ -1212,6 +1232,10 @@ impl App {
                         };
                         *bf_state.breakpoints() = breakpoints;
                         *bf_state.stdin() = snapshot.1.clone();
+
+                        if let Some(pos) = self.config.starting_position {
+                            bf_state.debug_set_position(pos);
+                        }
                     }
 
                     if e.consume_key(Modifiers::NONE, egui::Key::F) {
@@ -1417,6 +1441,22 @@ impl App {
             self.scene_offset = bf_state.cursor_positions()[0];
             self.scene_rect.set_center(poss((0.5, 0.5)));
             // disable panning
+            ui.input_mut(|input| {
+                input.smooth_scroll_delta = Vec2::ZERO;
+            });
+            scene = scene.sense(Sense::HOVER);
+        } else if self.config.fix_camera_to_program {
+            // TODO: disable zooming
+            self.scene_offset = (0, 0);
+            let program_size = match &self.mode {
+                Mode::Playing { bf_state, .. } => bf_state.program_size(),
+                Mode::Editing { fungespace, .. } => fungespace.program_size(),
+            };
+
+            self.scene_rect = Rect::from_min_max(
+                Pos2::new(-13.0, -17.0),
+                poss(((program_size.0 + 2) as f32, (program_size.1 + 2) as f32)),
+            );
             ui.input_mut(|input| {
                 input.smooth_scroll_delta = Vec2::ZERO;
             });
