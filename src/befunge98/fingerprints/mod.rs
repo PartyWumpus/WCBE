@@ -15,6 +15,7 @@ mod fpdp;
 mod fpsp;
 mod modu;
 mod null;
+mod pixl;
 mod refc;
 mod roma;
 
@@ -80,6 +81,7 @@ pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
             fpdp,
             fpsp,
             fing,
+            pixl,
             #[cfg(not(target_arch = "wasm32"))]
             hrti
         ]

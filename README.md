@@ -41,9 +41,9 @@ For standlone lib: `wasm-pack build --target web`
 - Profile file threads
 - Configurable "what to do on # at program edge"
 - Reduce crashes/infinite loops in b98
-- Be fully conformant with mycology.b98 (almost done)
-    - Shrink containing rect when spaces are placed at limits
-    - Add latin-1 parsing mode
+- Be fully conformant with mycology.b98 (effectively done)
+    - Need to shrink containing rect when spaces are placed at limits (only impacts `y`)
+    - Add latin-1 parsing mode (niche problem, most programs work fine as utf-8)
 - `q` should _show_ its return value somewhere
 - More b98 fingerprints
 
@@ -59,6 +59,7 @@ For standlone lib: `wasm-pack build --target web`
 - [FPDP](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#fpsp)
 - [FPSP](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#fpdp)
 - [FING](https://web.archive.org/web/20230617132045/https://rcfunge98.com/rcsfingers.html#fing)
+- PIXL (based on [befunge-with-graphics](https://esolangs.org/wiki/Befunge-with-graphics), WIP)
 
 ### Not web 
 - [HRTI](https://catseye.tc/view/funge-98/library/HRTI.markdown) (this is fixable)
