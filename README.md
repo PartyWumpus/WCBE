@@ -20,6 +20,7 @@ Then run: `cargo run --release`
 
 For hot reloading: `dx serve --hotpatch --target x86_64-unknown-linux-gnu --bin WCBE`
 For web build: `trunk build --release`
+For standlone lib: `wasm-pack build --target web`
 
 ## Features
 
@@ -53,6 +54,11 @@ For web build: `trunk build --release`
 - [NULL](https://catseye.tc/view/funge-98/library/NULL.markdown)
 - [ROMA](https://catseye.tc/view/funge-98/library/ROMA.markdown)
 - [BOOL](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#bool)
+- [MODU](https://catseye.tc/view/funge-98/library/MODU.markdown)
+- [REFC](https://catseye.tc/view/funge-98/library/REFC.markdown)
+- [FPDP](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#fpsp)
+- [FPSP](https://web.archive.org/web/20221029185454/http://www.rcfunge98.com/rcsfingers.html#fpdp)
+- [FING](https://web.archive.org/web/20230617132045/https://rcfunge98.com/rcsfingers.html#fing)
 
 ### Not web 
 - [HRTI](https://catseye.tc/view/funge-98/library/HRTI.markdown) (this is fixable)

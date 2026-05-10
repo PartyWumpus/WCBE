@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub const fn list_of_ops() -> Fingerprint {
-    fingerprint_map!(null [a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,t,u,v,w,x,y,z])
+    fingerprint_map!(null [a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z])
 }
 
 fn null_a(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {
@@ -60,6 +60,9 @@ fn null_q(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {
     this.direction = this.direction.reverse()
 }
 fn null_r(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {
+    this.direction = this.direction.reverse()
+}
+fn null_s(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {
     this.direction = this.direction.reverse()
 }
 fn null_t(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {

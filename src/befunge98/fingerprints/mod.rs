@@ -10,6 +10,9 @@ pub type Fingerprint = [Option<FingerprintFunction>; 26];
 mod hrti;
 
 mod bool;
+mod fing;
+mod fpdp;
+mod fpsp;
 mod modu;
 mod null;
 mod refc;
@@ -50,6 +53,10 @@ macro_rules! fingerprint_match {
     }};
 }
 
+pub fn reflect_fn(this: &mut Cursor, _state: &mut Env, _settings: &Settings) {
+    this.direction = this.direction.reverse()
+}
+
 pub const fn fingerprint_to_i64(bytes: &[u8]) -> i64 {
     let mut num: i64 = 0;
     let mut i = 0;
@@ -70,6 +77,9 @@ pub const fn fingerprint_from_id(id: i64) -> Option<Fingerprint> {
             bool,
             modu,
             refc,
+            fpdp,
+            fpsp,
+            fing,
             #[cfg(not(target_arch = "wasm32"))]
             hrti
         ]

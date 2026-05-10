@@ -1064,6 +1064,22 @@ impl Cursor {
         StepStatus::Normal
     }
 
+    // 0gnirts style
+    fn pop_string(&mut self) -> Option<String> {
+        let mut res = String::new();
+        loop {
+            let a = self.pop();
+            if a == 0 {
+                return Some(res);
+            }
+            if let Ok(a) = (a as u32).try_into() {
+                res.push(a);
+            } else {
+                return None;
+            }
+        }
+    }
+
     fn build_fingerprint(&mut self) -> i64 {
         let count = self.pop();
         let mut fingerprint_id = 0;
