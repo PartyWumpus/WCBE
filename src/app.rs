@@ -410,7 +410,7 @@ pub struct App {
     befunge_tooltip_open: bool,
 }
 
-fn poss(pos: (f32, f32)) -> Pos2 {
+const fn poss(pos: (f32, f32)) -> Pos2 {
     Pos2::new((pos.0) * 13.0, (pos.1) * 17.0)
 }
 
@@ -1438,13 +1438,37 @@ impl App {
             ..
         } = &self.mode
         {
-            self.scene_offset = bf_state.cursor_positions()[0];
-            self.scene_rect.set_center(poss((0.5, 0.5)));
-            // disable panning
-            ui.input_mut(|input| {
-                input.smooth_scroll_delta = Vec2::ZERO;
-            });
-            scene = scene.sense(Sense::HOVER);
+            const CENTER: Pos2 = poss((0.5, 0.5));
+            // TODO: zoom out (and back in?) if cursors cannot all fit on screen
+            // Probably need to make focus more than just a boolean, so user can pick a specific
+            // cursor to follow, or possibly a set of them as well as an option for all of em
+            for cursor_pos in bf_state.cursor_positions() {
+                let left_top = poss_reverse(self.scene_rect.left_top(), self.scene_offset);
+                let left_top = (left_top.0 + 2, left_top.1 + 2);
+                let right_bottom = poss_reverse(self.scene_rect.right_bottom(), self.scene_offset);
+                let right_bottom = (right_bottom.0 - 2, right_bottom.1 - 2);
+
+                let width = right_bottom.0 - left_top.0;
+                let height = right_bottom.1 - left_top.1;
+
+                if cursor_pos.1 > right_bottom.1 {
+                    self.scene_rect.set_center(CENTER);
+                    self.scene_offset = (self.scene_offset.0, cursor_pos.1 - height / 2);
+                }
+                if cursor_pos.0 > right_bottom.0 {
+                    self.scene_rect.set_center(CENTER);
+                    self.scene_offset = (cursor_pos.0 - width / 2, self.scene_offset.1);
+                }
+
+                if cursor_pos.1 < left_top.1 {
+                    self.scene_rect.set_center(CENTER);
+                    self.scene_offset = (self.scene_offset.0, cursor_pos.1 + height / 2);
+                }
+                if cursor_pos.0 < left_top.0 {
+                    self.scene_rect.set_center(CENTER);
+                    self.scene_offset = (cursor_pos.0 + width / 2, self.scene_offset.1);
+                }
+            }
         } else if self.config.fix_camera_to_program {
             // TODO: disable zooming
             self.scene_offset = (0, 0);
@@ -2582,6 +2606,7 @@ impl App {
                         matches!(version, BefungeVersionDiscriminants::Befunge98),
                         "Befunge98 (WIP)",
                     ))
+                    .on_hover_text("Works pretty well (almost completely conformant), but can cause crashes and the ui still needs some work.")
                     .clicked()
                 {
                     self.settings.befunge_version = BefungeVersionDiscriminants::Befunge98
