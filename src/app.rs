@@ -203,6 +203,7 @@ enum Mode {
         time_since_step: Instant,
         time_since_avg: Instant,
         bf_state: Box<BefungeVersion>,
+        selected_stack: usize,
         instruction_since: usize,
         running: bool,
         follow: bool,
@@ -599,6 +600,7 @@ impl Mode {
                     instruction_since: 0,
                     time_since_step: Instant::now(),
                     time_since_avg: Instant::now(),
+                    selected_stack: 0,
                     bf_state,
                     running: false,
                     follow: false,
@@ -1075,9 +1077,9 @@ impl App {
         });
         }
 
-        egui::SidePanel::left("left_panel")
+        egui::Panel::left("left_panel")
             .resizable(false)
-            .exact_width(150.0)
+            .exact_size(150.0)
             .show(ui, |ui| {
                 self.info_panel(ui);
             });
@@ -2833,7 +2835,10 @@ impl App {
         puffin::profile_function!();
         match &mut self.mode {
             Mode::Playing {
-                bf_state, running, ..
+                bf_state,
+                running,
+                selected_stack,
+                ..
             } => {
                 if let Some(graphics) = &mut bf_state.graphics() {
                     ui.horizontal(|ui| {
@@ -2926,6 +2931,51 @@ impl App {
                 };
 
                 ui.label("Stack:");
+                ui.horizontal(|ui| {
+                    // TODO: make this sticky, so once it goes over the limit it stays
+                    let num_stacks = bf_state.cursor_positions().len();
+                    *selected_stack += 1;
+                    match num_stacks {
+                        ..=1 => (),
+                        length @ 2..=6 => {
+                            ui.spacing_mut().item_spacing.x = 5.0;
+
+                            let num_buttons = length as f32;
+                            let spacing = ui.spacing().item_spacing.x * (num_buttons - 1.0);
+                            let button_width = (ui.available_width() - spacing) / num_buttons;
+
+                            for i in 1..=length {
+                                if ui
+                                    .add_sized(
+                                        [button_width, 20.0],
+                                        egui::Button::new(i.to_string()),
+                                    )
+                                    .clicked()
+                                {
+                                    *selected_stack = i;
+                                }
+                            }
+                        }
+                        length @ ..99_999 => {
+                            ui.label("IP:");
+                            ui.add(
+                                egui::DragValue::new(selected_stack)
+                                    .speed(0.5)
+                                    .range(1..=length),
+                            );
+                            ui.label("/");
+                            ui.label(length.to_string());
+                        }
+                        length => {
+                            ui.add(
+                                egui::DragValue::new(selected_stack)
+                                    .speed(0.5)
+                                    .range(1..=length),
+                            );
+                        }
+                    }
+                    *selected_stack -= 1;
+                });
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.add_space(2.0);
@@ -2969,13 +3019,15 @@ impl App {
                     ui.vertical(|ui| {
                         let text_style = TextStyle::Body;
 
+                        let stack = bf_state.stack(*selected_stack);
+
                         ScrollArea::vertical()
                             .auto_shrink([false; 2])
                             .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
                             .show_rows(
                                 ui,
                                 ui.text_style_height(&text_style),
-                                bf_state.stack(0).len(),
+                                stack.len(),
                                 |ui, row_range| {
                                     let painter = ui.painter();
                                     painter.rect_filled(
@@ -2984,7 +3036,7 @@ impl App {
                                         ui.visuals().faint_bg_color,
                                     );
                                     for value in row_range {
-                                        ui.label(bf_state.stack(0)[value].to_string());
+                                        ui.label(stack[value].to_string());
                                     }
                                 },
                             );
